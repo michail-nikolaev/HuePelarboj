@@ -13,6 +13,8 @@ Project inspired by [HomeSpan-IKEA-PELARBOJ](https://github.com/n0rt0nthec4t/Hom
 ## Current Implementation
 - **Zigbee Hue Light**: Full ZigbeeHueLight implementation with color support
 - **RGB LED Control**: PWM-based control on pins D0, D1, D2
+- **Smooth Color Interpolation**: FreeRTOS task with 50 FPS updates
+- **Unified State Management**: Single LightState structure for current/target values
 - **Hue Integration**: Uses Phillips Hue distributed network key
 - **Device Profile**: Configured as "nkey Pelarboj" color light
 - **Factory Reset**: Boot button (3+ seconds) for network reset
@@ -55,20 +57,32 @@ pio device monitor -b 115200
 
 ## Features Working
 - **On/Off Control**: Device responds to power state commands
-- **Brightness Control**: Level control with proper scaling
-- **Color Control**: RGB color commands are processed and applied to LEDs
+- **Brightness Control**: Smooth level control with interpolation
+- **Color Control**: RGB color commands with smooth transitions
 - **State Reporting**: Device updates Zigbee attributes after initialization
+- **Smooth Transitions**: All changes interpolate smoothly over time
 
 ## Implementation Details
-- **Command Callback**: `staticLightChangeCallback` processes all light commands
-- **LED Scaling**: Brightness level applied to RGB values: `color * (level / 255.0f)`
-- **Power States**: LEDs turn off when state=false, apply colors when state=true
-- **Attribute Sync**: `zbUpdateStateFromAttributes()` ensures proper state reporting
+- **Interpolation Task**: Dedicated FreeRTOS task running at 50 FPS (20ms intervals)
+- **State Structure**: Unified `LightState` with current (float) and target (uint8_t) values
+- **Thread Safety**: Mutex protection for concurrent access between task and callbacks
+- **Transition Speed**: Configurable interpolation rate (0.1 = gradual, 1.0 = instant)
+- **LED Scaling**: Final output = `current_color * (current_level / 255.0f)`
+- **Command Processing**: `staticLightChangeCallback` sets target values only
+- **Hardware Updates**: LED outputs applied outside mutex for optimal performance
+
+## Recent Updates
+- ✅ **Smooth Color Interpolation**: Added FreeRTOS task for professional transitions
+- ✅ **Unified State Management**: Refactored to single LightState structure
+- ✅ **Level Interpolation**: Brightness changes now smooth like color changes
+- ✅ **Thread Safety**: Fixed mutex creation and synchronization issues
+- ✅ **Performance Optimization**: LED updates outside mutex critical section
 
 ## Next Steps
 - [x] Implement Zigbee light device profile
 - [x] Add Hue bridge discovery and pairing
 - [x] Fix command response handling for proper Hue recognition
+- [x] Add smooth color/brightness interpolation system
 - [ ] Integrate color temperature control
 - [ ] Add brightness dimming ranges
 - [ ] Implement network configuration interface

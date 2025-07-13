@@ -1,5 +1,7 @@
 #include <Arduino.h>
 #include <Zigbee.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
 // Courtesy http://www.instructables.com/id/How-to-Use-an-RGB-LED/?ALLSTEPS
 // function to convert a color to its Red, Green, and Blue components.
@@ -67,23 +69,84 @@ const uint8_t ledB = D2;
 
 const uint8_t ENDPOINT = 10;
 
+// Light state structure with current and target values
+struct LightState
+{
+  // Current values (float for smooth interpolation)
+  float current_r, current_g, current_b; // Current RGB values (0.0-255.0)
+  float current_level;                   // Current brightness level (0.0-255.0)
+  bool current_state;                    // Current on/off state
+
+  // Target values (set by Hue commands)
+  uint8_t target_r, target_g, target_b; // Target RGB values (0-255)
+  uint8_t target_level;                 // Target brightness level (0-255)
+  bool target_state;                    // Target on/off state
+};
+
+LightState lightState = {
+    // Initialize current values
+    0.0f, 0.0f, 0.0f, // current RGB
+    0.0f,             // current level
+    false,            // current state
+
+    // Initialize target values
+    0, 0, 0, // target RGB
+    255,     // target level
+    false    // target state
+};
+
+SemaphoreHandle_t colorMutex;
+
 ZigbeeHueLight *pelarboj;
+
+const int LED_UPDATE_RATE_MS = 20;   // 50 FPS update rate
+const float TRANSITION_SPEED = 0.1f; // Interpolation speed (0.0-1.0)
+
+// LED update task that handles smooth color interpolation
+void ledUpdateTask(void *parameter)
+{
+  while (true)
+  {
+    if (xSemaphoreTake(colorMutex, pdMS_TO_TICKS(10)) == pdTRUE)
+    {
+
+      // Smooth interpolation toward target values
+      lightState.current_r += (lightState.target_r - lightState.current_r) * TRANSITION_SPEED;
+      lightState.current_g += (lightState.target_g - lightState.current_g) * TRANSITION_SPEED;
+      lightState.current_b += (lightState.target_b - lightState.current_b) * TRANSITION_SPEED;
+      lightState.current_level += (lightState.target_level - lightState.current_level) * TRANSITION_SPEED;
+      lightState.current_state = lightState.target_state;
+
+      // Calculate final RGB values with brightness applied
+      float finalR = lightState.current_state ? (lightState.current_r * (lightState.current_level / 255.0f)) : 0.0f;
+      float finalG = lightState.current_state ? (lightState.current_g * (lightState.current_level / 255.0f)) : 0.0f;
+      float finalB = lightState.current_state ? (lightState.current_b * (lightState.current_level / 255.0f)) : 0.0f;
+
+      xSemaphoreGive(colorMutex);
+
+      // Apply to LED hardware
+      ledcWrite(ledR, (uint8_t)constrain(finalR, 0, 255));
+      ledcWrite(ledG, (uint8_t)constrain(finalG, 0, 255));
+      ledcWrite(ledB, (uint8_t)constrain(finalB, 0, 255));
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(LED_UPDATE_RATE_MS));
+  }
+}
 
 // Static callback implementations
 static void staticLightChangeCallback(bool state, uint8_t endpoint, uint8_t red, uint8_t green, uint8_t blue, uint8_t level, uint16_t temperature, esp_zb_zcl_color_control_color_mode_t color_mode)
 {
-  Serial.printf("state:%d level:%d R:%d G:%d B:%d", state, level, red, green, blue);
-  if (!state)
+  // Serial.printf("Command received - state:%d level:%d R:%d G:%d B:%d\n", state, level, red, green, blue);
+  //  Update target values for smooth interpolation
+  if (xSemaphoreTake(colorMutex, pdMS_TO_TICKS(10)) == pdTRUE)
   {
-    ledcWrite(ledR, 0);
-    ledcWrite(ledG, 0);
-    ledcWrite(ledB, 0);
-  }
-  else
-  {
-    ledcWrite(ledR, red * (level / 255.0f));
-    ledcWrite(ledG, green * (level / 255.0f));
-    ledcWrite(ledB, blue * (level / 255.0f));
+    lightState.target_state = state;
+    lightState.target_r = red;
+    lightState.target_g = green;
+    lightState.target_b = blue;
+    lightState.target_level = level;
+    xSemaphoreGive(colorMutex);
   }
 }
 
@@ -107,6 +170,14 @@ void setup()
   ledcAttach(ledB, 12000, 8);
 
   pinMode(LED_BUILTIN, OUTPUT);
+
+  // Initialize mutex for thread-safe color updates
+  colorMutex = xSemaphoreCreateMutex();
+  if (colorMutex == NULL)
+  {
+    Serial.println("Failed to create color mutex!");
+    ESP.restart();
+  }
 
   uint8_t color = 0;        // a value from 0 to 255 representing the hue
   uint32_t R, G, B;         // the Red Green and Blue color components
@@ -169,6 +240,15 @@ void setup()
   }
 
   pelarboj->zbUpdateStateFromAttributes();
+
+  // Start LED update task
+  if (xTaskCreate(ledUpdateTask, "LED_Update", 4096, NULL, 2, NULL) != pdPASS)
+  {
+    Serial.println("Failed to create LED update task!");
+    ESP.restart();
+  }
+
+  Serial.println("LED update task started - smooth color transitions enabled");
 }
 
 void resetSystem()
