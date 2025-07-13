@@ -73,6 +73,18 @@ ZigbeeHueLight *pelarboj;
 static void staticLightChangeCallback(bool state, uint8_t endpoint, uint8_t red, uint8_t green, uint8_t blue, uint8_t level, uint16_t temperature, esp_zb_zcl_color_control_color_mode_t color_mode)
 {
   Serial.printf("state:%d level:%d R:%d G:%d B:%d", state, level, red, green, blue);
+  if (!state)
+  {
+    ledcWrite(ledR, 0);
+    ledcWrite(ledG, 0);
+    ledcWrite(ledB, 0);
+  }
+  else
+  {
+    ledcWrite(ledR, red * (level / 255.0f));
+    ledcWrite(ledG, green * (level / 255.0f));
+    ledcWrite(ledB, blue * (level / 255.0f));
+  }
 }
 
 static void staticIdentifyCallback(uint16_t time)
@@ -86,7 +98,7 @@ void setup()
   Serial.begin(115200);
   delay(10);
 
-   pinMode(BOOT_PIN, INPUT_PULLUP);
+  pinMode(BOOT_PIN, INPUT_PULLUP);
 
   // Initialize pins as LEDC channels
   // resolution 1-16 bits, freq limits depend on resolution, channel is automatically selected
@@ -155,6 +167,8 @@ void setup()
     digitalWrite(LED_BUILTIN, LOW);
     delay(100);
   }
+
+  pelarboj->zbUpdateStateFromAttributes();
 }
 
 void resetSystem()

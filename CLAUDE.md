@@ -49,17 +49,26 @@ pio device monitor -b 115200
 
 ## Connection Status
 - ✅ **Zigbee Network**: Successfully connects to Hue bridge
-- ⚠️ **Command Handling**: Receives but needs proper response implementation
-- **Raw Commands Seen**: Basic (0), Level Control (8), Color Control (768)
+- ✅ **Command Handling**: Properly responds to Hue commands with LED control
+- ✅ **State Synchronization**: Calls zbUpdateStateFromAttributes() after setup
+- **Raw Commands Handled**: Basic (0), Level Control (8), Color Control (768)
 
-## Current Issues
-- Device connects to Zigbee network but may not respond properly to Hue commands
-- Need to implement proper command response handling in callbacks
+## Features Working
+- **On/Off Control**: Device responds to power state commands
+- **Brightness Control**: Level control with proper scaling
+- **Color Control**: RGB color commands are processed and applied to LEDs
+- **State Reporting**: Device updates Zigbee attributes after initialization
+
+## Implementation Details
+- **Command Callback**: `staticLightChangeCallback` processes all light commands
+- **LED Scaling**: Brightness level applied to RGB values: `color * (level / 255.0f)`
+- **Power States**: LEDs turn off when state=false, apply colors when state=true
+- **Attribute Sync**: `zbUpdateStateFromAttributes()` ensures proper state reporting
 
 ## Next Steps
 - [x] Implement Zigbee light device profile
 - [x] Add Hue bridge discovery and pairing
-- [ ] Fix command response handling for proper Hue recognition
+- [x] Fix command response handling for proper Hue recognition
 - [ ] Integrate color temperature control
-- [ ] Add brightness dimming
+- [ ] Add brightness dimming ranges
 - [ ] Implement network configuration interface
