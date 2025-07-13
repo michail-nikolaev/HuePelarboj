@@ -11,10 +11,12 @@ Project inspired by [HomeSpan-IKEA-PELARBOJ](https://github.com/n0rt0nthec4t/Hom
 - **LED Type**: Common anode RGB LED (configurable via `invert` flag)
 
 ## Current Implementation
-- Basic RGB LED control with PWM
-- Hue to RGB color conversion
-- Color cycling demonstration
-- Serial output for debugging
+- **Zigbee Hue Light**: Full ZigbeeHueLight implementation with color support
+- **RGB LED Control**: PWM-based control on pins D0, D1, D2
+- **Hue Integration**: Uses Phillips Hue distributed network key
+- **Device Profile**: Configured as "nkey Pelarboj" color light
+- **Factory Reset**: Boot button (3+ seconds) for network reset
+- **Connection Status**: LED indicators during pairing and operation
 
 ## Build Commands
 ```bash
@@ -39,13 +41,25 @@ pio device monitor -b 115200
 
 ## Zigbee Configuration
 - **Mode**: ZCZR (Zigbee Coordinator/Router)
-- **Filesystem**: LittleFS
-- **Storage**: Dedicated partitions for Zigbee network data
+- **Device Type**: ESP_ZB_HUE_LIGHT_TYPE_COLOR
+- **Endpoint**: 10
+- **Distributed Key**: Phillips Hue standard key
+- **Filesystem**: LittleFS with dedicated Zigbee partitions
 - **Debug**: Available with detailed ESP Zigbee stack logging
 
+## Connection Status
+- ✅ **Zigbee Network**: Successfully connects to Hue bridge
+- ⚠️ **Command Handling**: Receives but needs proper response implementation
+- **Raw Commands Seen**: Basic (0), Level Control (8), Color Control (768)
+
+## Current Issues
+- Device connects to Zigbee network but may not respond properly to Hue commands
+- Need to implement proper command response handling in callbacks
+
 ## Next Steps
-- [ ] Implement Zigbee light device profile
-- [ ] Add Hue bridge discovery and pairing
+- [x] Implement Zigbee light device profile
+- [x] Add Hue bridge discovery and pairing
+- [ ] Fix command response handling for proper Hue recognition
 - [ ] Integrate color temperature control
 - [ ] Add brightness dimming
 - [ ] Implement network configuration interface
