@@ -121,7 +121,7 @@ pio device monitor -b 115200
 - **EFFECT_COMBO**: Combines both color wandering and level pulsation for dynamic visual impact
 - **EFFECT_SCENE_CHANGE**: Base color variations (±50 RGB units) with smoothstep interpolation (1-2s transition, 5-10s hold)
 - **EFFECT_FIREPLACE**: Warm fire simulation with red boost, reduced blue, 3-frequency flicker, and ember glow
-- **EFFECT_RAINBOW**: Hue cycling around base color (±120°) with 70% rainbow, 30% base color blend
+- **EFFECT_RAINBOW**: Fast hue cycling around base color (±120°) with 8% rainbow, 92% base color blend
 - **Phase Counters**: Multiple phase timers for organic, non-repetitive movement
 - **Configurable Timing**: COLOR_WANDER_SPEED (0.01f), LEVEL_PULSE_SPEED (0.01f)
 - **Safe Boundaries**: constrain() ensures values stay within valid RGB/level ranges

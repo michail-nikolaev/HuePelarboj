@@ -226,7 +226,7 @@ const float FIREPLACE_RED_BOOST = 1.1f;        // Subtle red boost for warm fire
 const float FIREPLACE_ORANGE_MIX = 0.15f;      // Subtle orange mix to stay closer to base
 
 // Rainbow effect parameters
-const float RAINBOW_CYCLE_SPEED = 0.005f;      // Speed of color spectrum cycling (slow and smooth)
+const float RAINBOW_CYCLE_SPEED = 0.02f;       // Speed of color spectrum cycling (faster)
 const float RAINBOW_SATURATION = 0.8f;         // How vivid the rainbow colors are (0.0-1.0)
 
 
@@ -601,8 +601,8 @@ void applyEffects(float baseR, float baseG, float baseB, float baseLevel,
     uint32_t rainbowR, rainbowG, rainbowB;
     hueToRGB(finalHue, (uint8_t)baseLevel, rainbowR, rainbowG, rainbowB);
     
-    // Blend with base color to maintain some base characteristics
-    float blendFactor = 0.7f; // 70% rainbow, 30% base color
+    // Blend with base color to maintain base characteristics  
+    float blendFactor = 0.08f; // 8% rainbow, 92% base color
     finalR = rainbowR * blendFactor + baseR * (1.0f - blendFactor);
     finalG = rainbowG * blendFactor + baseG * (1.0f - blendFactor);
     finalB = rainbowB * blendFactor + baseB * (1.0f - blendFactor);
