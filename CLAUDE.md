@@ -13,8 +13,9 @@ Project inspired by [HomeSpan-IKEA-PELARBOJ](https://github.com/n0rt0nthec4t/Hom
 ## Current Implementation
 - **Zigbee Hue Light**: Full ZigbeeHueLight implementation with color support
 - **RGB LED Control**: PWM-based control on pins D0, D1, D2
+- **Dynamic Effects Layer**: Real-time effects applied on top of base colors
 - **Smooth Color Interpolation**: FreeRTOS task with 50 FPS updates
-- **Unified State Management**: Single LightState structure for current/target values
+- **Three-Tier State Management**: Target → Base → Final (with effects)
 - **Hue Integration**: Uses Phillips Hue distributed network key
 - **Device Profile**: Configured as "nkey Pelarboj" color light
 - **Factory Reset**: Boot button (3+ seconds) for network reset
@@ -59,28 +60,42 @@ pio device monitor -b 115200
 - **On/Off Control**: Device responds to power state commands
 - **Brightness Control**: Smooth level control with interpolation
 - **Color Control**: RGB color commands with smooth transitions
+- **Dynamic Effects**: Two built-in effects with random selection at startup
+- **Color Wander Effect**: Colors randomly drift around base color from coordinator
+- **Level Pulse Effect**: Brightness smoothly pulsates around base level
 - **State Reporting**: Device reports initial state to coordinator after startup
-- **Random Startup Color**: Device starts with random color to demonstrate state reporting
+- **Race-Free Synchronization**: Coordinator and internal states perfectly synchronized
 - **Smooth Transitions**: All changes interpolate smoothly over time
 
 ## Implementation Details
+- **Three-Tier Processing**: Target → Base → Final (with effects) → LED Output
+- **Effects System**: `applyEffects(base_color, EFFECT_TYPE, time)` architecture
 - **Interpolation Task**: Dedicated FreeRTOS task running at 50 FPS (20ms intervals)
-- **State Structure**: Unified `LightState` with current (float) and target (uint8_t) values
+- **State Structure**: Enhanced `LightState` with base, target, and final value sets
 - **Thread Safety**: Mutex protection for concurrent access between task and callbacks
 - **Transition Speed**: Configurable interpolation rate (0.1 = gradual, 1.0 = instant)
-- **LED Scaling**: Final output = `current_color * (current_level / 255.0f)`
+- **Effect Parameters**: Configurable speed and range for each effect type
+- **LED Scaling**: Final output = `final_color * (final_level / 255.0f)`
 - **Command Processing**: `staticLightChangeCallback` sets target values only
 - **Hardware Updates**: LED outputs applied outside mutex for optimal performance
 - **State Reporting**: Uses `setLightState()`, `setLightLevel()`, `setLightColor()` + `zbUpdateStateFromAttributes()`
-- **Startup Behavior**: Sets device to ON, full brightness, random RGB color after connection
+- **Race-Free Init**: Both coordinator and internal states set to identical startup values
 
 ## Recent Updates
-- ✅ **Smooth Color Interpolation**: Added FreeRTOS task for professional transitions
-- ✅ **Unified State Management**: Refactored to single LightState structure
-- ✅ **Level Interpolation**: Brightness changes now smooth like color changes
-- ✅ **Thread Safety**: Fixed mutex creation and synchronization issues
-- ✅ **Performance Optimization**: LED updates outside mutex critical section
-- ✅ **State Reporting**: Device reports initial state to coordinator after startup
+- ✅ **Dynamic Effects Layer**: Implemented real-time effects system on top of base colors
+- ✅ **Color Wander Effect**: Colors smoothly drift around coordinator-set base color
+- ✅ **Level Pulse Effect**: Brightness gently pulsates around base level
+- ✅ **Three-Tier Architecture**: Target → Base → Final processing pipeline
+- ✅ **Race Condition Fix**: Synchronized coordinator and internal states at startup
+- ✅ **Random Effect Selection**: Device randomly selects effect at startup for demo
+- ✅ **Effect Parameters**: Configurable speed, range, and behavior for each effect
+
+## Effects System Details
+- **EFFECT_COLOR_WANDER**: Colors drift ±20 RGB units around base using 3 sine waves
+- **EFFECT_LEVEL_PULSE**: Brightness varies ±40% around base level with sine wave
+- **Phase Counters**: Multiple phase timers for organic, non-repetitive movement
+- **Configurable Timing**: COLOR_WANDER_SPEED (0.01f), LEVEL_PULSE_SPEED (0.01f)
+- **Safe Boundaries**: constrain() ensures values stay within valid RGB/level ranges
 
 ## Next Steps
 - [x] Implement Zigbee light device profile
@@ -88,7 +103,9 @@ pio device monitor -b 115200
 - [x] Fix command response handling for proper Hue recognition
 - [x] Add smooth color/brightness interpolation system
 - [x] Add device state reporting to coordinator
+- [x] Implement dynamic effects layer with two base effects
+- [ ] Add more effect types (strobe, rainbow, fireplace, etc.)
 - [ ] Integrate color temperature control
-- [ ] Add physical button for on/off state changes
+- [ ] Add physical button for on/off state changes and effect switching
 - [ ] Add brightness dimming ranges
 - [ ] Implement network configuration interface

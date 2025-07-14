@@ -69,30 +69,59 @@ const uint8_t ledB = D2;
 
 const uint8_t ENDPOINT = 10;
 
+// Effects system
+enum EffectType
+{
+  EFFECT_NONE = 0,
+  EFFECT_COLOR_WANDER = 1,
+  EFFECT_LEVEL_PULSE = 2
+};
+
+struct EffectState
+{
+  EffectType type;
+  unsigned long startTime;
+  float phase1, phase2, phase3; // Multiple phase counters for complex effects
+};
+
 // Light state structure with current and target values
 struct LightState
 {
-  // Current values (float for smooth interpolation)
-  float current_r, current_g, current_b; // Current RGB values (0.0-255.0)
-  float current_level;                   // Current brightness level (0.0-255.0)
-  bool current_state;                    // Current on/off state
+  // Base values (from Hue coordinator - the foundation for effects)
+  float base_r, base_g, base_b; // Base RGB values (0.0-255.0)
+  float base_level;             // Base brightness level (0.0-255.0)
+  bool base_state;              // Base on/off state
 
-  // Target values (set by Hue commands)
+  // Target values (set by Hue commands - interpolated to base)
   uint8_t target_r, target_g, target_b; // Target RGB values (0-255)
   uint8_t target_level;                 // Target brightness level (0-255)
   bool target_state;                    // Target on/off state
+
+  // Final output values (base + effects - sent to LEDs)
+  float final_r, final_g, final_b; // Final RGB after effects (0.0-255.0)
+  float final_level;               // Final brightness after effects (0.0-255.0)
 };
 
 LightState lightState = {
-    // Initialize current values
-    0.0f, 0.0f, 0.0f, // current RGB
-    0.0f,             // current level
-    false,            // current state
+    // Initialize base values
+    0.0f, 0.0f, 0.0f, // base RGB
+    0.0f,             // base level
+    false,            // base state
 
     // Initialize target values
     0, 0, 0, // target RGB
     255,     // target level
-    false    // target state
+    false,   // target state
+
+    // Initialize final values
+    0.0f, 0.0f, 0.0f, // final RGB
+    0.0f              // final level
+};
+
+EffectState effectState = {
+    EFFECT_COLOR_WANDER, // Start with color wander effect
+    0,                   // Will be set when effect starts
+    0.0f, 0.0f, 0.0f     // Phase counters
 };
 
 SemaphoreHandle_t colorMutex;
@@ -102,32 +131,101 @@ ZigbeeHueLight *pelarboj;
 const int LED_UPDATE_RATE_MS = 20;   // 50 FPS update rate
 const float TRANSITION_SPEED = 0.1f; // Interpolation speed (0.0-1.0)
 
-// LED update task that handles smooth color interpolation
+// Effect parameters
+const float COLOR_WANDER_RANGE = 20.0f; // How far colors can wander from base (0-255)
+const float COLOR_WANDER_SPEED = 0.01f; // Speed of color wandering
+const float LEVEL_PULSE_RANGE = 0.4f;   // Pulse range as fraction of base level (0.0-1.0)
+const float LEVEL_PULSE_SPEED = 0.01f;  // Speed of level pulsation
+
+// Apply effects to base color and return final output values
+void applyEffects(float baseR, float baseG, float baseB, float baseLevel,
+                  float &finalR, float &finalG, float &finalB, float &finalLevel)
+{
+
+  if (effectState.startTime == 0)
+  {
+    effectState.startTime = millis();
+  }
+
+  unsigned long elapsed = millis() - effectState.startTime;
+  float time = elapsed / 1000.0f; // Convert to seconds
+
+  // Start with base values
+  finalR = baseR;
+  finalG = baseG;
+  finalB = baseB;
+  finalLevel = baseLevel;
+
+  switch (effectState.type)
+  {
+  case EFFECT_COLOR_WANDER:
+  {
+    // Update phase counters at different speeds for organic movement
+    effectState.phase1 += COLOR_WANDER_SPEED * 1.0f;
+    effectState.phase2 += COLOR_WANDER_SPEED * 1.3f;
+    effectState.phase3 += COLOR_WANDER_SPEED * 0.7f;
+
+    // Generate smooth wandering offsets using sine waves
+    float offsetR = sin(effectState.phase1) * COLOR_WANDER_RANGE;
+    float offsetG = sin(effectState.phase2) * COLOR_WANDER_RANGE;
+    float offsetB = sin(effectState.phase3) * COLOR_WANDER_RANGE;
+
+    // Apply offsets to base color
+    finalR = constrain(baseR + offsetR, 0.0f, 255.0f);
+    finalG = constrain(baseG + offsetG, 0.0f, 255.0f);
+    finalB = constrain(baseB + offsetB, 0.0f, 255.0f);
+  }
+  break;
+
+  case EFFECT_LEVEL_PULSE:
+  {
+    // Update phase counter for pulsation
+    effectState.phase1 += LEVEL_PULSE_SPEED;
+
+    // Generate smooth pulsation using sine wave
+    float pulseMultiplier = 1.0f + (sin(effectState.phase1) * LEVEL_PULSE_RANGE);
+
+    // Apply pulsation to level
+    finalLevel = constrain(baseLevel * pulseMultiplier, 0.0f, 255.0f);
+  }
+  break;
+
+  case EFFECT_NONE:
+  default:
+    // No effects - final = base
+    break;
+  }
+}
+
+// LED update task that handles smooth color interpolation and effects
 void ledUpdateTask(void *parameter)
 {
   while (true)
   {
     if (xSemaphoreTake(colorMutex, pdMS_TO_TICKS(10)) == pdTRUE)
     {
+      // Smooth interpolation toward target values (creates base color)
+      lightState.base_r += (lightState.target_r - lightState.base_r) * TRANSITION_SPEED;
+      lightState.base_g += (lightState.target_g - lightState.base_g) * TRANSITION_SPEED;
+      lightState.base_b += (lightState.target_b - lightState.base_b) * TRANSITION_SPEED;
+      lightState.base_level += (lightState.target_level - lightState.base_level) * TRANSITION_SPEED;
+      lightState.base_state = lightState.target_state;
 
-      // Smooth interpolation toward target values
-      lightState.current_r += (lightState.target_r - lightState.current_r) * TRANSITION_SPEED;
-      lightState.current_g += (lightState.target_g - lightState.current_g) * TRANSITION_SPEED;
-      lightState.current_b += (lightState.target_b - lightState.current_b) * TRANSITION_SPEED;
-      lightState.current_level += (lightState.target_level - lightState.current_level) * TRANSITION_SPEED;
-      lightState.current_state = lightState.target_state;
-
-      // Calculate final RGB values with brightness applied
-      float finalR = lightState.current_state ? (lightState.current_r * (lightState.current_level / 255.0f)) : 0.0f;
-      float finalG = lightState.current_state ? (lightState.current_g * (lightState.current_level / 255.0f)) : 0.0f;
-      float finalB = lightState.current_state ? (lightState.current_b * (lightState.current_level / 255.0f)) : 0.0f;
+      // Apply effects to base values to get final values
+      applyEffects(lightState.base_r, lightState.base_g, lightState.base_b, lightState.base_level,
+                   lightState.final_r, lightState.final_g, lightState.final_b, lightState.final_level);
 
       xSemaphoreGive(colorMutex);
 
+      // Calculate final RGB values with brightness applied
+      float outputR = lightState.base_state ? (lightState.final_r * (lightState.final_level / 255.0f)) : 0.0f;
+      float outputG = lightState.base_state ? (lightState.final_g * (lightState.final_level / 255.0f)) : 0.0f;
+      float outputB = lightState.base_state ? (lightState.final_b * (lightState.final_level / 255.0f)) : 0.0f;
+
       // Apply to LED hardware
-      ledcWrite(ledR, (uint8_t)constrain(finalR, 0, 255));
-      ledcWrite(ledG, (uint8_t)constrain(finalG, 0, 255));
-      ledcWrite(ledB, (uint8_t)constrain(finalB, 0, 255));
+      ledcWrite(ledR, (uint8_t)constrain(outputR, 0, 255));
+      ledcWrite(ledG, (uint8_t)constrain(outputG, 0, 255));
+      ledcWrite(ledB, (uint8_t)constrain(outputB, 0, 255));
     }
 
     vTaskDelay(pdMS_TO_TICKS(LED_UPDATE_RATE_MS));
@@ -224,10 +322,44 @@ void setup()
     delay(100);
   }
 
-  pelarboj->setLightState(true);
-  pelarboj->setLightLevel(255);
-  pelarboj->setLightColor(random(255), random(255), random(255));
+  // Select random effect for demonstration
+  effectState.type = (EffectType)(random(1, 3)); // Random between EFFECT_COLOR_WANDER and EFFECT_LEVEL_PULSE
+  effectState.startTime = millis();
+
+  Serial.printf("Selected effect: %s\n",
+                effectState.type == EFFECT_COLOR_WANDER ? "COLOR_WANDER" : "LEVEL_PULSE");
+
+  // Generate random color for startup
+  uint8_t startR = random(255);
+  uint8_t startG = random(255);
+  uint8_t startB = random(255);
+  uint8_t startLevel = 255;
+  bool startState = true;
+
+  // Set coordinator state
+  pelarboj->setLightState(startState);
+  pelarboj->setLightLevel(startLevel);
+  pelarboj->setLightColor(startR, startG, startB);
   pelarboj->zbUpdateStateFromAttributes();
+
+  // Set internal state to match to avoid race conditions
+  if (xSemaphoreTake(colorMutex, pdMS_TO_TICKS(100)) == pdTRUE)
+  {
+    lightState.target_state = startState;
+    lightState.target_r = startR;
+    lightState.target_g = startG;
+    lightState.target_b = startB;
+    lightState.target_level = startLevel;
+
+    // Also set base values directly for immediate effect
+    lightState.base_state = startState;
+    lightState.base_r = startR;
+    lightState.base_g = startG;
+    lightState.base_b = startB;
+    lightState.base_level = startLevel;
+
+    xSemaphoreGive(colorMutex);
+  }
 
   // Start LED update task
   if (xTaskCreate(ledUpdateTask, "LED_Update", 4096, NULL, 2, NULL) != pdPASS)
