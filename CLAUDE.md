@@ -63,11 +63,12 @@ pio device monitor -b 115200
 - **On/Off Control**: Device responds to power state commands + single button press
 - **Ultra-Smooth Brightness**: 12-bit PWM provides 4096 brightness levels (16x smoother than 8-bit)
 - **Professional Color Control**: 68.7 billion color combinations with imperceptible stepping
-- **Dynamic Effects**: Five effects with manual switching via double-press button
+- **Dynamic Effects**: Six effects with manual switching via double-press button
 - **Color Wander Effect**: Colors randomly drift around base color from coordinator
 - **Level Pulse Effect**: Brightness smoothly pulsates around base level
 - **Combo Effect**: Combines color wandering and level pulsation simultaneously
 - **Scene Change Effect**: Creates color/brightness variations around base color, transitions over 1-2s, holds for 5-10s
+- **Fireplace Effect**: Simulates realistic fire with warm colors, multiple flicker frequencies, and intensity variations
 - **Effect Switching**: Double-press button cycles through effects with numbered pulse feedback
 - **Factory Reset**: Long-press button (5s) with red pulsation confirmation
 - **Smart Button Handling**: Debounced state machine with single/double/long press detection
@@ -107,6 +108,7 @@ pio device monitor -b 115200
 - ✅ **Combo Effect**: Added fourth effect combining color wander and level pulse
 - ✅ **Scene Change Effect**: Added fifth effect with random scene transitions and smoothstep interpolation
 - ✅ **Effect Code Refactoring**: Simplified effect number display logic and fixed transition glitches
+- ✅ **Fireplace Effect**: Added sixth effect with realistic fire simulation using multi-frequency flicker
 
 ## PWM & Effects Details
 - **PWM Resolution**: 12-bit (4096 levels) at 5kHz frequency for ultra-smooth output
@@ -116,6 +118,7 @@ pio device monitor -b 115200
 - **EFFECT_LEVEL_PULSE**: Brightness varies ±40% around base level with sine wave
 - **EFFECT_COMBO**: Combines both color wandering and level pulsation for dynamic visual impact
 - **EFFECT_SCENE_CHANGE**: Base color variations (±50 RGB units) with smoothstep interpolation (1-2s transition, 5-10s hold)
+- **EFFECT_FIREPLACE**: Warm fire simulation with red boost, reduced blue, 3-frequency flicker, and ember glow
 - **Phase Counters**: Multiple phase timers for organic, non-repetitive movement
 - **Configurable Timing**: COLOR_WANDER_SPEED (0.01f), LEVEL_PULSE_SPEED (0.01f)
 - **Safe Boundaries**: constrain() ensures values stay within valid RGB/level ranges

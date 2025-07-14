@@ -103,7 +103,8 @@ enum EffectType
   EFFECT_LEVEL_PULSE = 2,
   EFFECT_COMBO = 3,
   EFFECT_SCENE_CHANGE = 4,
-  MAX_EFFECT_NUMBER = 5
+  EFFECT_FIREPLACE = 5,
+  MAX_EFFECT_NUMBER = 6
 };
 
 // Special modes for LED control
@@ -216,6 +217,12 @@ const float COLOR_WANDER_RANGE = 10.0f; // How far colors can wander from base (
 const float COLOR_WANDER_SPEED = 0.01f; // Speed of color wandering
 const float LEVEL_PULSE_RANGE = 0.4f;   // Pulse range as fraction of base level (0.0-1.0)
 const float LEVEL_PULSE_SPEED = 0.01f;  // Speed of level pulsation
+
+// Fireplace effect parameters
+const float FIREPLACE_FLICKER_SPEED = 0.08f;   // Speed of flame flickering (faster)
+const float FIREPLACE_INTENSITY_RANGE = 0.3f;  // How much brightness can vary (reduced range)
+const float FIREPLACE_RED_BOOST = 1.1f;        // Subtle red boost for warm fire colors
+const float FIREPLACE_ORANGE_MIX = 0.15f;      // Subtle orange mix to stay closer to base
 
 // Effect management functions
 void switchToNextEffect()
@@ -527,6 +534,39 @@ void applyEffects(float baseR, float baseG, float baseB, float baseLevel,
   }
   break;
 
+  case EFFECT_FIREPLACE:
+  {
+    // Simulate realistic fireplace flickering with warm colors
+    // Update multiple phase counters for organic flame movement
+    effectState.phase1 += FIREPLACE_FLICKER_SPEED * 1.0f;  // Main flicker
+    effectState.phase2 += FIREPLACE_FLICKER_SPEED * 1.7f;  // Secondary flicker
+    effectState.phase3 += FIREPLACE_FLICKER_SPEED * 0.6f;  // Slow ember glow
+    
+    // Generate multiple sine waves for realistic flame behavior
+    float mainFlicker = sin(effectState.phase1);
+    float secondaryFlicker = sin(effectState.phase2) * 0.4f;
+    float emberGlow = sin(effectState.phase3) * 0.2f;
+    
+    // Combine flickers with bias toward brighter flames
+    float totalFlicker = (mainFlicker + secondaryFlicker + emberGlow + 1.5f) / 3.5f;
+    totalFlicker = constrain(totalFlicker, 0.0f, 1.0f);
+    
+    // Create subtle warm fire colors closer to base
+    float fireRed = baseR * FIREPLACE_RED_BOOST;
+    float fireGreen = baseG * (0.9f + FIREPLACE_ORANGE_MIX * totalFlicker); // Subtle orange tint
+    float fireBlue = baseB * 0.8f; // Slightly reduce blue for warmth
+    
+    // Apply intensity variations for flickering (reduced range)
+    float intensity = 1.0f - (FIREPLACE_INTENSITY_RANGE * (1.0f - totalFlicker));
+    
+    // Constrain colors to valid range
+    finalR = constrain(fireRed, 0.0f, 255.0f);
+    finalG = constrain(fireGreen, 0.0f, 255.0f);
+    finalB = constrain(fireBlue, 0.0f, 255.0f);
+    finalLevel = constrain(baseLevel * intensity, baseLevel * 0.7f, baseLevel);
+  }
+  break;
+
   case EFFECT_NONE:
   default:
     // No effects - final = base
@@ -609,8 +649,8 @@ void buttonTask(void *parameter)
         buttonHandler.isPressed = false;
         Serial.println("Double press confirmed - switching effect");
         switchToNextEffect();
-        // Blink the effect number (1-5) instead of enum value (0-4)
-        uint8_t effectNumber = effectState.type + 1; // Convert 0-4 to 1-5
+        // Blink the effect number (1-6) instead of enum value (0-5)
+        uint8_t effectNumber = effectState.type + 1; // Convert 0-5 to 1-6
         blinkEffectNumber(effectNumber);
         buttonHandler.state = BTN_IDLE;
       }
