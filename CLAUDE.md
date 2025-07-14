@@ -63,9 +63,10 @@ pio device monitor -b 115200
 - **On/Off Control**: Device responds to power state commands + single button press
 - **Ultra-Smooth Brightness**: 12-bit PWM provides 4096 brightness levels (16x smoother than 8-bit)
 - **Professional Color Control**: 68.7 billion color combinations with imperceptible stepping
-- **Dynamic Effects**: Three effects with manual switching via double-press button
+- **Dynamic Effects**: Four effects with manual switching via double-press button
 - **Color Wander Effect**: Colors randomly drift around base color from coordinator
 - **Level Pulse Effect**: Brightness smoothly pulsates around base level
+- **Combo Effect**: Combines color wandering and level pulsation simultaneously
 - **Effect Switching**: Double-press button cycles through effects with numbered pulse feedback
 - **Factory Reset**: Long-press button (5s) with red pulsation confirmation
 - **Smart Button Handling**: Debounced state machine with single/double/long press detection
@@ -102,6 +103,7 @@ pio device monitor -b 115200
 - ✅ **Smart Visual Feedback**: Replaced harsh blinking with smooth pulsation (30%-100%)
 - ✅ **Effect Management**: Added manual effect switching with numbered pulse feedback
 - ✅ **Factory Reset UX**: Improved reset confirmation with red pulsation during 5s hold
+- ✅ **Combo Effect**: Added fourth effect combining color wander and level pulse
 
 ## PWM & Effects Details
 - **PWM Resolution**: 12-bit (4096 levels) at 5kHz frequency for ultra-smooth output
@@ -109,6 +111,7 @@ pio device monitor -b 115200
 - **Smoothness Factor**: 16x smoother than standard 8-bit systems
 - **EFFECT_COLOR_WANDER**: Colors drift ±10 RGB units around base using 3 sine waves
 - **EFFECT_LEVEL_PULSE**: Brightness varies ±40% around base level with sine wave
+- **EFFECT_COMBO**: Combines both color wandering and level pulsation for dynamic visual impact
 - **Phase Counters**: Multiple phase timers for organic, non-repetitive movement
 - **Configurable Timing**: COLOR_WANDER_SPEED (0.01f), LEVEL_PULSE_SPEED (0.01f)
 - **Safe Boundaries**: constrain() ensures values stay within valid RGB/level ranges

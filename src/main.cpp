@@ -101,7 +101,8 @@ enum EffectType
   EFFECT_NONE = 0,
   EFFECT_COLOR_WANDER = 1,
   EFFECT_LEVEL_PULSE = 2,
-  MAX_EFFECT_NUMBER = 3
+  EFFECT_COMBO = 3,
+  MAX_EFFECT_NUMBER = 4
 };
 
 // Special modes for LED control
@@ -366,6 +367,34 @@ void applyEffects(float baseR, float baseG, float baseB, float baseLevel,
   }
   break;
 
+  case EFFECT_COMBO:
+  {
+    // Combine color wandering and level pulsation
+    // Update phase counters at different speeds for organic movement
+    effectState.phase1 += COLOR_WANDER_SPEED * 1.0f;  // For color wander R
+    effectState.phase2 += COLOR_WANDER_SPEED * 1.3f;  // For color wander G
+    effectState.phase3 += COLOR_WANDER_SPEED * 0.7f;  // For color wander B
+
+    // Generate smooth wandering offsets using sine waves
+    float offsetR = sin(effectState.phase1) * COLOR_WANDER_RANGE;
+    float offsetG = sin(effectState.phase2) * COLOR_WANDER_RANGE;
+    float offsetB = sin(effectState.phase3) * COLOR_WANDER_RANGE;
+
+    // Apply offsets to base color
+    finalR = constrain(baseR + offsetR, 0.0f, 255.0f);
+    finalG = constrain(baseG + offsetG, 0.0f, 255.0f);
+    finalB = constrain(baseB + offsetB, 0.0f, 255.0f);
+
+    // Add level pulsation using a different phase counter
+    // Use time-based calculation to avoid phase counter conflicts
+    float pulsePhase = elapsed * LEVEL_PULSE_SPEED * 0.001f; // Convert to phase
+    float pulseMultiplier = 1.0f + (sin(pulsePhase) * LEVEL_PULSE_RANGE);
+
+    // Apply pulsation to level
+    finalLevel = constrain(baseLevel * pulseMultiplier, 0.0f, 255.0f);
+  }
+  break;
+
   case EFFECT_NONE:
   default:
     // No effects - final = base
@@ -448,9 +477,10 @@ void buttonTask(void *parameter)
         buttonHandler.isPressed = false;
         Serial.println("Double press confirmed - switching effect");
         switchToNextEffect();
-        // Blink the effect number (1-3) instead of enum value (0-2)
-        blinkEffectNumber(effectState.type == EFFECT_NONE ? 1 : effectState.type == EFFECT_COLOR_WANDER ? 2
-                                                                                                        : 3);
+        // Blink the effect number (1-4) instead of enum value (0-3)
+        blinkEffectNumber(effectState.type == EFFECT_NONE ? 1 : 
+                         effectState.type == EFFECT_COLOR_WANDER ? 2 : 
+                         effectState.type == EFFECT_LEVEL_PULSE ? 3 : 4);
         buttonHandler.state = BTN_IDLE;
       }
       else if (currentReading && (currentTime - buttonHandler.pressStartTime) >= LONG_PRESS_TIME_MS)
