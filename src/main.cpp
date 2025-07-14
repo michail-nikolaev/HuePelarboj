@@ -433,11 +433,11 @@ void applyEffects(float baseR, float baseG, float baseB, float baseLevel,
       effectState.sceneCurrentB = baseB;
       effectState.sceneCurrentLevel = baseLevel;
       
-      // Generate first random target
-      effectState.sceneTargetR = random(256);
-      effectState.sceneTargetG = random(256);
-      effectState.sceneTargetB = random(256);
-      effectState.sceneTargetLevel = random(50, 256); // Keep some minimum brightness
+      // Generate first target based on base color variations
+      effectState.sceneTargetR = constrain(baseR + random(-50, 51), 0, 255);
+      effectState.sceneTargetG = constrain(baseG + random(-50, 51), 0, 255);
+      effectState.sceneTargetB = constrain(baseB + random(-50, 51), 0, 255);
+      effectState.sceneTargetLevel = constrain(baseLevel + random(-50, 51), 50, 255);
       
       effectState.sceneChangeTime = millis();
       effectState.sceneHoldTime = random(5000, 10000); // 5-10 seconds hold
@@ -502,11 +502,11 @@ void applyEffects(float baseR, float baseG, float baseB, float baseLevel,
       }
       else
       {
-        // Hold complete - generate new target and start transition
-        effectState.sceneTargetR = random(256);
-        effectState.sceneTargetG = random(256);
-        effectState.sceneTargetB = random(256);
-        effectState.sceneTargetLevel = random(50, 256);
+        // Hold complete - generate new target based on base color variations
+        effectState.sceneTargetR = constrain(baseR + random(-50, 51), 0, 255);
+        effectState.sceneTargetG = constrain(baseG + random(-50, 51), 0, 255);
+        effectState.sceneTargetB = constrain(baseB + random(-50, 51), 0, 255);
+        effectState.sceneTargetLevel = constrain(baseLevel + random(-50, 51), 50, 255);
         
         effectState.sceneChangeTime = millis();
         effectState.sceneHoldTime = random(5000, 10000); // New hold time

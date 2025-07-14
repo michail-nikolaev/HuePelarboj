@@ -67,7 +67,7 @@ pio device monitor -b 115200
 - **Color Wander Effect**: Colors randomly drift around base color from coordinator
 - **Level Pulse Effect**: Brightness smoothly pulsates around base level
 - **Combo Effect**: Combines color wandering and level pulsation simultaneously
-- **Scene Change Effect**: Randomly selects new colors/brightness and smoothly transitions over 1-2s, holds for 5-10s
+- **Scene Change Effect**: Creates color/brightness variations around base color, transitions over 1-2s, holds for 5-10s
 - **Effect Switching**: Double-press button cycles through effects with numbered pulse feedback
 - **Factory Reset**: Long-press button (5s) with red pulsation confirmation
 - **Smart Button Handling**: Debounced state machine with single/double/long press detection
@@ -115,7 +115,7 @@ pio device monitor -b 115200
 - **EFFECT_COLOR_WANDER**: Colors drift ±10 RGB units around base using 3 sine waves
 - **EFFECT_LEVEL_PULSE**: Brightness varies ±40% around base level with sine wave
 - **EFFECT_COMBO**: Combines both color wandering and level pulsation for dynamic visual impact
-- **EFFECT_SCENE_CHANGE**: Random color/brightness scenes with smoothstep interpolation (1-2s transition, 5-10s hold)
+- **EFFECT_SCENE_CHANGE**: Base color variations (±50 RGB units) with smoothstep interpolation (1-2s transition, 5-10s hold)
 - **Phase Counters**: Multiple phase timers for organic, non-repetitive movement
 - **Configurable Timing**: COLOR_WANDER_SPEED (0.01f), LEVEL_PULSE_SPEED (0.01f)
 - **Safe Boundaries**: constrain() ensures values stay within valid RGB/level ranges
