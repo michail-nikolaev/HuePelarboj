@@ -131,8 +131,13 @@ ZigbeeHueLight *pelarboj;
 const int LED_UPDATE_RATE_MS = 20;   // 50 FPS update rate
 const float TRANSITION_SPEED = 0.1f; // Interpolation speed (0.0-1.0)
 
+// LED PWM configuration
+const int LED_PWM_FREQUENCY = 5000; // 5 kHz PWM frequency for 12-bit resolution
+const int LED_PWM_RESOLUTION = 12;  // 12-bit resolution (0-4095)
+const int LED_PWM_MAX_VALUE = 4095; // Maximum PWM value for 12-bit
+
 // Effect parameters
-const float COLOR_WANDER_RANGE = 20.0f; // How far colors can wander from base (0-255)
+const float COLOR_WANDER_RANGE = 10.0f; // How far colors can wander from base (0-255)
 const float COLOR_WANDER_SPEED = 0.01f; // Speed of color wandering
 const float LEVEL_PULSE_RANGE = 0.4f;   // Pulse range as fraction of base level (0.0-1.0)
 const float LEVEL_PULSE_SPEED = 0.01f;  // Speed of level pulsation
@@ -222,10 +227,15 @@ void ledUpdateTask(void *parameter)
       float outputG = lightState.base_state ? (lightState.final_g * (lightState.final_level / 255.0f)) : 0.0f;
       float outputB = lightState.base_state ? (lightState.final_b * (lightState.final_level / 255.0f)) : 0.0f;
 
-      // Apply to LED hardware
-      ledcWrite(ledR, (uint8_t)constrain(outputR, 0, 255));
-      ledcWrite(ledG, (uint8_t)constrain(outputG, 0, 255));
-      ledcWrite(ledB, (uint8_t)constrain(outputB, 0, 255));
+      // Scale to 12-bit PWM range (0-4095) for ultra-smooth output
+      uint16_t pwmR = (uint16_t)constrain(outputR * (LED_PWM_MAX_VALUE / 255.0f), 0, LED_PWM_MAX_VALUE);
+      uint16_t pwmG = (uint16_t)constrain(outputG * (LED_PWM_MAX_VALUE / 255.0f), 0, LED_PWM_MAX_VALUE);
+      uint16_t pwmB = (uint16_t)constrain(outputB * (LED_PWM_MAX_VALUE / 255.0f), 0, LED_PWM_MAX_VALUE);
+
+      // Apply to LED hardware with 12-bit resolution
+      ledcWrite(ledR, pwmR);
+      ledcWrite(ledG, pwmG);
+      ledcWrite(ledB, pwmB);
     }
 
     vTaskDelay(pdMS_TO_TICKS(LED_UPDATE_RATE_MS));
@@ -261,11 +271,11 @@ void setup()
 
   pinMode(BOOT_PIN, INPUT_PULLUP);
 
-  // Initialize pins as LEDC channels
-  // resolution 1-16 bits, freq limits depend on resolution, channel is automatically selected
-  ledcAttach(ledR, 12000, 8); // 12 kHz PWM, 8-bit resolution
-  ledcAttach(ledG, 12000, 8);
-  ledcAttach(ledB, 12000, 8);
+  // Initialize pins as LEDC channels with high resolution
+  // 12-bit resolution provides 4096 levels for ultra-smooth transitions
+  ledcAttach(ledR, LED_PWM_FREQUENCY, LED_PWM_RESOLUTION); // 5 kHz PWM, 12-bit resolution
+  ledcAttach(ledG, LED_PWM_FREQUENCY, LED_PWM_RESOLUTION);
+  ledcAttach(ledB, LED_PWM_FREQUENCY, LED_PWM_RESOLUTION);
 
   pinMode(LED_BUILTIN, OUTPUT);
 
@@ -312,10 +322,10 @@ void setup()
     color++;
     hueToRGB(color, brightness, R, G, B); // call function to convert hue to RGB
 
-    // write the RGB values to the pins
-    ledcWrite(ledR, R); // write red component to channel 1, etc.
-    ledcWrite(ledG, G);
-    ledcWrite(ledB, B);
+    // write the RGB values to the pins (scale to 12-bit resolution)
+    ledcWrite(ledR, R * (LED_PWM_MAX_VALUE / 255)); // Scale to 12-bit range
+    ledcWrite(ledG, G * (LED_PWM_MAX_VALUE / 255));
+    ledcWrite(ledB, B * (LED_PWM_MAX_VALUE / 255));
     digitalWrite(LED_BUILTIN, HIGH);
     delay(100);
     digitalWrite(LED_BUILTIN, LOW);
