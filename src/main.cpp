@@ -183,21 +183,6 @@ void setup()
   uint32_t R, G, B;         // the Red Green and Blue color components
   uint8_t brightness = 255; // 255 is maximum brightness, but can be changed.  Might need 256 for common anode to fully turn off.
 
-  Serial.println("Send all LEDs a 255 and wait 2 seconds.");
-  // If your RGB LED turns off instead of on here you should check if the LED is common anode or cathode.
-  // If it doesn't fully turn off and is common anode try using 256.
-  ledcWrite(ledR, 255);
-  ledcWrite(ledG, 255);
-  ledcWrite(ledB, 255);
-  digitalWrite(LED_BUILTIN, HIGH);
-  delay(200);
-  Serial.println("Send all LEDs a 0 and wait 2 seconds.");
-  ledcWrite(ledR, 0);
-  ledcWrite(ledG, 0);
-  ledcWrite(ledB, 0);
-  digitalWrite(LED_BUILTIN, LOW);
-  delay(200);
-
   uint8_t phillips_hue_key[] = {0x81, 0x45, 0x86, 0x86, 0x5D, 0xC6, 0xC8, 0xB1, 0xC8, 0xCB, 0xC4, 0x2E, 0x5D, 0x65, 0xD3, 0xB9};
   Zigbee.setEnableJoiningToDistributed(true);
   Zigbee.setStandardDistributedKey(phillips_hue_key);
@@ -239,6 +224,9 @@ void setup()
     delay(100);
   }
 
+  pelarboj->setLightState(true);
+  pelarboj->setLightLevel(255);
+  pelarboj->setLightColor(random(255), random(255), random(255));
   pelarboj->zbUpdateStateFromAttributes();
 
   // Start LED update task

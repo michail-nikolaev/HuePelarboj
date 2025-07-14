@@ -59,7 +59,8 @@ pio device monitor -b 115200
 - **On/Off Control**: Device responds to power state commands
 - **Brightness Control**: Smooth level control with interpolation
 - **Color Control**: RGB color commands with smooth transitions
-- **State Reporting**: Device updates Zigbee attributes after initialization
+- **State Reporting**: Device reports initial state to coordinator after startup
+- **Random Startup Color**: Device starts with random color to demonstrate state reporting
 - **Smooth Transitions**: All changes interpolate smoothly over time
 
 ## Implementation Details
@@ -70,6 +71,8 @@ pio device monitor -b 115200
 - **LED Scaling**: Final output = `current_color * (current_level / 255.0f)`
 - **Command Processing**: `staticLightChangeCallback` sets target values only
 - **Hardware Updates**: LED outputs applied outside mutex for optimal performance
+- **State Reporting**: Uses `setLightState()`, `setLightLevel()`, `setLightColor()` + `zbUpdateStateFromAttributes()`
+- **Startup Behavior**: Sets device to ON, full brightness, random RGB color after connection
 
 ## Recent Updates
 - ✅ **Smooth Color Interpolation**: Added FreeRTOS task for professional transitions
@@ -77,12 +80,15 @@ pio device monitor -b 115200
 - ✅ **Level Interpolation**: Brightness changes now smooth like color changes
 - ✅ **Thread Safety**: Fixed mutex creation and synchronization issues
 - ✅ **Performance Optimization**: LED updates outside mutex critical section
+- ✅ **State Reporting**: Device reports initial state to coordinator after startup
 
 ## Next Steps
 - [x] Implement Zigbee light device profile
 - [x] Add Hue bridge discovery and pairing
 - [x] Fix command response handling for proper Hue recognition
 - [x] Add smooth color/brightness interpolation system
+- [x] Add device state reporting to coordinator
 - [ ] Integrate color temperature control
+- [ ] Add physical button for on/off state changes
 - [ ] Add brightness dimming ranges
 - [ ] Implement network configuration interface
