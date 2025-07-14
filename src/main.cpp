@@ -102,7 +102,8 @@ enum EffectType
   EFFECT_COLOR_WANDER = 1,
   EFFECT_LEVEL_PULSE = 2,
   EFFECT_COMBO = 3,
-  MAX_EFFECT_NUMBER = 4
+  EFFECT_SCENE_CHANGE = 4,
+  MAX_EFFECT_NUMBER = 5
 };
 
 // Special modes for LED control
@@ -118,6 +119,16 @@ struct EffectState
   EffectType type;
   unsigned long startTime;
   float phase1, phase2, phase3; // Multiple phase counters for complex effects
+  
+  // Scene change effect state
+  float sceneTargetR, sceneTargetG, sceneTargetB; // Target color for scene change
+  float sceneTargetLevel;                         // Target level for scene change
+  float sceneCurrentR, sceneCurrentG, sceneCurrentB; // Current scene color during transition
+  float sceneCurrentLevel;                        // Current scene level during transition
+  unsigned long sceneChangeTime;                  // When the current scene change started
+  unsigned long sceneHoldTime;                    // How long to hold current scene (5-10s random)
+  unsigned long sceneTransitionTime;              // How long transition should take (1-2s, set once)
+  bool sceneTransitioning;                        // True if transitioning, false if holding
 };
 
 // Light state structure with current and target values
@@ -175,7 +186,17 @@ LightState lightState = {
 EffectState effectState = {
     EFFECT_COLOR_WANDER, // Start with color wander effect
     0,                   // Will be set when effect starts
-    0.0f, 0.0f, 0.0f     // Phase counters
+    0.0f, 0.0f, 0.0f,    // Phase counters
+    
+    // Scene change effect initialization
+    0.0f, 0.0f, 0.0f,    // sceneTargetR, sceneTargetG, sceneTargetB
+    0.0f,                // sceneTargetLevel
+    0.0f, 0.0f, 0.0f,    // sceneCurrentR, sceneCurrentG, sceneCurrentB
+    0.0f,                // sceneCurrentLevel
+    0,                   // sceneChangeTime
+    0,                   // sceneHoldTime
+    0,                   // sceneTransitionTime
+    false                // sceneTransitioning
 };
 
 SemaphoreHandle_t colorMutex;
@@ -204,6 +225,12 @@ void switchToNextEffect()
   effectState.phase1 = 0.0f;
   effectState.phase2 = 0.0f;
   effectState.phase3 = 0.0f;
+  
+  // Reset scene change state when switching to/from scene change effect
+  effectState.sceneChangeTime = 0;
+  effectState.sceneHoldTime = 0;
+  effectState.sceneTransitionTime = 0;
+  effectState.sceneTransitioning = false;
 
   Serial.printf("Switched to effect: %d\n", effectState.type);
 }
@@ -395,6 +422,111 @@ void applyEffects(float baseR, float baseG, float baseB, float baseLevel,
   }
   break;
 
+  case EFFECT_SCENE_CHANGE:
+  {
+    // Initialize scene change if needed
+    if (effectState.sceneChangeTime == 0)
+    {
+      // Start with current base values
+      effectState.sceneCurrentR = baseR;
+      effectState.sceneCurrentG = baseG;
+      effectState.sceneCurrentB = baseB;
+      effectState.sceneCurrentLevel = baseLevel;
+      
+      // Generate first random target
+      effectState.sceneTargetR = random(256);
+      effectState.sceneTargetG = random(256);
+      effectState.sceneTargetB = random(256);
+      effectState.sceneTargetLevel = random(50, 256); // Keep some minimum brightness
+      
+      effectState.sceneChangeTime = millis();
+      effectState.sceneHoldTime = random(5000, 10000); // 5-10 seconds hold
+      effectState.sceneTransitionTime = random(1000, 2000); // 1-2 seconds transition
+      effectState.sceneTransitioning = true;
+      
+      Serial.printf("Scene change: New target R=%d G=%d B=%d L=%d\n", 
+                   (int)effectState.sceneTargetR, (int)effectState.sceneTargetG, 
+                   (int)effectState.sceneTargetB, (int)effectState.sceneTargetLevel);
+    }
+    
+    unsigned long sceneElapsed = millis() - effectState.sceneChangeTime;
+    
+    if (effectState.sceneTransitioning)
+    {
+      // Transition phase (1-2 seconds, time set once at start)
+      if (sceneElapsed < effectState.sceneTransitionTime)
+      {
+        // Smooth interpolation to target using fixed transition time
+        float progress = (float)sceneElapsed / effectState.sceneTransitionTime;
+        progress = min(progress, 1.0f);
+        
+        // Use exponential interpolation for smoother transitions
+        float smoothProgress = progress * progress * (3.0f - 2.0f * progress); // Smoothstep
+        
+        effectState.sceneCurrentR = effectState.sceneCurrentR + (effectState.sceneTargetR - effectState.sceneCurrentR) * smoothProgress * 0.1f;
+        effectState.sceneCurrentG = effectState.sceneCurrentG + (effectState.sceneTargetG - effectState.sceneCurrentG) * smoothProgress * 0.1f;
+        effectState.sceneCurrentB = effectState.sceneCurrentB + (effectState.sceneTargetB - effectState.sceneCurrentB) * smoothProgress * 0.1f;
+        effectState.sceneCurrentLevel = effectState.sceneCurrentLevel + (effectState.sceneTargetLevel - effectState.sceneCurrentLevel) * smoothProgress * 0.1f;
+        
+        finalR = effectState.sceneCurrentR;
+        finalG = effectState.sceneCurrentG;
+        finalB = effectState.sceneCurrentB;
+        finalLevel = effectState.sceneCurrentLevel;
+      }
+      else
+      {
+        // Transition complete - switch to hold phase
+        effectState.sceneCurrentR = effectState.sceneTargetR;
+        effectState.sceneCurrentG = effectState.sceneTargetG;
+        effectState.sceneCurrentB = effectState.sceneTargetB;
+        effectState.sceneCurrentLevel = effectState.sceneTargetLevel;
+        effectState.sceneTransitioning = false;
+        effectState.sceneChangeTime = millis(); // Reset timer for hold phase
+        
+        finalR = effectState.sceneCurrentR;
+        finalG = effectState.sceneCurrentG;
+        finalB = effectState.sceneCurrentB;
+        finalLevel = effectState.sceneCurrentLevel;
+      }
+    }
+    else
+    {
+      // Hold phase (5-10 seconds)
+      if (sceneElapsed < effectState.sceneHoldTime)
+      {
+        // Hold current scene
+        finalR = effectState.sceneCurrentR;
+        finalG = effectState.sceneCurrentG;
+        finalB = effectState.sceneCurrentB;
+        finalLevel = effectState.sceneCurrentLevel;
+      }
+      else
+      {
+        // Hold complete - generate new target and start transition
+        effectState.sceneTargetR = random(256);
+        effectState.sceneTargetG = random(256);
+        effectState.sceneTargetB = random(256);
+        effectState.sceneTargetLevel = random(50, 256);
+        
+        effectState.sceneChangeTime = millis();
+        effectState.sceneHoldTime = random(5000, 10000); // New hold time
+        effectState.sceneTransitionTime = random(1000, 2000); // New transition time
+        effectState.sceneTransitioning = true;
+        
+        Serial.printf("Scene change: New target R=%d G=%d B=%d L=%d\n", 
+                     (int)effectState.sceneTargetR, (int)effectState.sceneTargetG, 
+                     (int)effectState.sceneTargetB, (int)effectState.sceneTargetLevel);
+        
+        // Start interpolating toward new target
+        finalR = effectState.sceneCurrentR;
+        finalG = effectState.sceneCurrentG;
+        finalB = effectState.sceneCurrentB;
+        finalLevel = effectState.sceneCurrentLevel;
+      }
+    }
+  }
+  break;
+
   case EFFECT_NONE:
   default:
     // No effects - final = base
@@ -477,10 +609,9 @@ void buttonTask(void *parameter)
         buttonHandler.isPressed = false;
         Serial.println("Double press confirmed - switching effect");
         switchToNextEffect();
-        // Blink the effect number (1-4) instead of enum value (0-3)
-        blinkEffectNumber(effectState.type == EFFECT_NONE ? 1 : 
-                         effectState.type == EFFECT_COLOR_WANDER ? 2 : 
-                         effectState.type == EFFECT_LEVEL_PULSE ? 3 : 4);
+        // Blink the effect number (1-5) instead of enum value (0-4)
+        uint8_t effectNumber = effectState.type + 1; // Convert 0-4 to 1-5
+        blinkEffectNumber(effectNumber);
         buttonHandler.state = BTN_IDLE;
       }
       else if (currentReading && (currentTime - buttonHandler.pressStartTime) >= LONG_PRESS_TIME_MS)
