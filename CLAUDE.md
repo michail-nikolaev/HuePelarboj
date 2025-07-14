@@ -63,12 +63,13 @@ pio device monitor -b 115200
 - **On/Off Control**: Device responds to power state commands + single button press
 - **Ultra-Smooth Brightness**: 12-bit PWM provides 4096 brightness levels (16x smoother than 8-bit)
 - **Professional Color Control**: 68.7 billion color combinations with imperceptible stepping
-- **Dynamic Effects**: Six effects with manual switching via double-press button
+- **Dynamic Effects**: Seven effects with manual switching via double-press button
 - **Color Wander Effect**: Colors randomly drift around base color from coordinator
 - **Level Pulse Effect**: Brightness smoothly pulsates around base level
 - **Combo Effect**: Combines color wandering and level pulsation simultaneously
 - **Scene Change Effect**: Creates color/brightness variations around base color, transitions over 1-2s, holds for 5-10s
 - **Fireplace Effect**: Simulates realistic fire with warm colors, multiple flicker frequencies, and intensity variations
+- **Rainbow Effect**: Cycles hue around base color (±120°) using existing hueToRGB function
 - **Effect Switching**: Double-press button cycles through effects with numbered pulse feedback
 - **Factory Reset**: Long-press button (5s) with red pulsation confirmation
 - **Smart Button Handling**: Debounced state machine with single/double/long press detection
@@ -109,6 +110,7 @@ pio device monitor -b 115200
 - ✅ **Scene Change Effect**: Added fifth effect with random scene transitions and smoothstep interpolation
 - ✅ **Effect Code Refactoring**: Simplified effect number display logic and fixed transition glitches
 - ✅ **Fireplace Effect**: Added sixth effect with realistic fire simulation using multi-frequency flicker
+- ✅ **Rainbow Effect**: Added seventh effect with base color-harmonious hue cycling using existing hueToRGB
 
 ## PWM & Effects Details
 - **PWM Resolution**: 12-bit (4096 levels) at 5kHz frequency for ultra-smooth output
@@ -119,6 +121,7 @@ pio device monitor -b 115200
 - **EFFECT_COMBO**: Combines both color wandering and level pulsation for dynamic visual impact
 - **EFFECT_SCENE_CHANGE**: Base color variations (±50 RGB units) with smoothstep interpolation (1-2s transition, 5-10s hold)
 - **EFFECT_FIREPLACE**: Warm fire simulation with red boost, reduced blue, 3-frequency flicker, and ember glow
+- **EFFECT_RAINBOW**: Hue cycling around base color (±120°) with 70% rainbow, 30% base color blend
 - **Phase Counters**: Multiple phase timers for organic, non-repetitive movement
 - **Configurable Timing**: COLOR_WANDER_SPEED (0.01f), LEVEL_PULSE_SPEED (0.01f)
 - **Safe Boundaries**: constrain() ensures values stay within valid RGB/level ranges
@@ -131,7 +134,7 @@ pio device monitor -b 115200
 - [x] Add device state reporting to coordinator
 - [x] Implement dynamic effects layer with two base effects
 - [x] Upgrade to 12-bit PWM resolution for professional smoothness
-- [ ] Add more effect types (strobe, rainbow, fireplace, etc.)
+- [x] Add more effect types (strobe, rainbow, fireplace, etc.)
 - [ ] Integrate color temperature control
 - [x] Add physical button for on/off state changes and effect switching
 - [ ] Add brightness dimming ranges

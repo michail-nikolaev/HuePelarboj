@@ -104,7 +104,8 @@ enum EffectType
   EFFECT_COMBO = 3,
   EFFECT_SCENE_CHANGE = 4,
   EFFECT_FIREPLACE = 5,
-  MAX_EFFECT_NUMBER = 6
+  EFFECT_RAINBOW = 6,
+  MAX_EFFECT_NUMBER = 7
 };
 
 // Special modes for LED control
@@ -223,6 +224,11 @@ const float FIREPLACE_FLICKER_SPEED = 0.08f;   // Speed of flame flickering (fas
 const float FIREPLACE_INTENSITY_RANGE = 0.3f;  // How much brightness can vary (reduced range)
 const float FIREPLACE_RED_BOOST = 1.1f;        // Subtle red boost for warm fire colors
 const float FIREPLACE_ORANGE_MIX = 0.15f;      // Subtle orange mix to stay closer to base
+
+// Rainbow effect parameters
+const float RAINBOW_CYCLE_SPEED = 0.005f;      // Speed of color spectrum cycling (slow and smooth)
+const float RAINBOW_SATURATION = 0.8f;         // How vivid the rainbow colors are (0.0-1.0)
+
 
 // Effect management functions
 void switchToNextEffect()
@@ -567,6 +573,48 @@ void applyEffects(float baseR, float baseG, float baseB, float baseLevel,
   }
   break;
 
+  case EFFECT_RAINBOW:
+  {
+    // Smooth rainbow color cycling based on base color
+    effectState.phase1 += RAINBOW_CYCLE_SPEED;
+    
+    // Cycle hue around base color (±120 degrees for variety while staying related)
+    float hueOffset = sin(effectState.phase1) * 120.0f; // -120 to +120 degrees
+    
+    // Convert base color to approximate hue for starting point
+    float baseHue = 0.0f;
+    if (baseR >= baseG && baseR >= baseB) {
+      // Red dominant
+      baseHue = 0.0f + (baseG - baseB) / (baseR - min(baseG, baseB)) * 60.0f;
+    } else if (baseG >= baseR && baseG >= baseB) {
+      // Green dominant  
+      baseHue = 120.0f + (baseB - baseR) / (baseG - min(baseR, baseB)) * 60.0f;
+    } else {
+      // Blue dominant
+      baseHue = 240.0f + (baseR - baseG) / (baseB - min(baseR, baseG)) * 60.0f;
+    }
+    
+    // Calculate final hue with offset
+    uint8_t finalHue = (uint8_t)constrain((baseHue + hueOffset) * 255.0f / 360.0f, 0, 255);
+    
+    // Use existing hueToRGB function with base brightness
+    uint32_t rainbowR, rainbowG, rainbowB;
+    hueToRGB(finalHue, (uint8_t)baseLevel, rainbowR, rainbowG, rainbowB);
+    
+    // Blend with base color to maintain some base characteristics
+    float blendFactor = 0.7f; // 70% rainbow, 30% base color
+    finalR = rainbowR * blendFactor + baseR * (1.0f - blendFactor);
+    finalG = rainbowG * blendFactor + baseG * (1.0f - blendFactor);
+    finalB = rainbowB * blendFactor + baseB * (1.0f - blendFactor);
+    finalLevel = baseLevel; // Keep original brightness level
+    
+    // Constrain to valid range
+    finalR = constrain(finalR, 0.0f, 255.0f);
+    finalG = constrain(finalG, 0.0f, 255.0f);
+    finalB = constrain(finalB, 0.0f, 255.0f);
+  }
+  break;
+
   case EFFECT_NONE:
   default:
     // No effects - final = base
@@ -649,8 +697,8 @@ void buttonTask(void *parameter)
         buttonHandler.isPressed = false;
         Serial.println("Double press confirmed - switching effect");
         switchToNextEffect();
-        // Blink the effect number (1-6) instead of enum value (0-5)
-        uint8_t effectNumber = effectState.type + 1; // Convert 0-5 to 1-6
+        // Blink the effect number (1-7) instead of enum value (0-6)
+        uint8_t effectNumber = effectState.type + 1; // Convert 0-6 to 1-7
         blinkEffectNumber(effectNumber);
         buttonHandler.state = BTN_IDLE;
       }
@@ -863,13 +911,8 @@ void setup()
     delay(100);
   }
 
-  // Select random effect for demonstration
-  effectState.type = (EffectType)(random(1, 3)); // Random between EFFECT_COLOR_WANDER and EFFECT_LEVEL_PULSE
+  effectState.type = EFFECT_COMBO;
   effectState.startTime = millis();
-
-  Serial.printf("Selected effect: %s\n",
-                effectState.type == EFFECT_COLOR_WANDER ? "COLOR_WANDER" : "LEVEL_PULSE");
-
   // Generate random color for startup
   uint8_t startR = random(255);
   uint8_t startG = random(255);
