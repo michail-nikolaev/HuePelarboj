@@ -69,12 +69,47 @@ const uint8_t ledB = D2;
 
 const uint8_t ENDPOINT = 10;
 
+// Button handling constants
+const uint32_t DEBOUNCE_TIME_MS = 50;
+const uint32_t DOUBLE_PRESS_WINDOW_MS = 300;
+const uint32_t LONG_PRESS_TIME_MS = 5000;
+
+// Button state machine
+enum ButtonState
+{
+  BTN_IDLE,
+  BTN_FIRST_PRESS,
+  BTN_WAITING_SECOND,
+  BTN_SECOND_PRESS,
+  BTN_LONG_PRESS_ACTIVE
+};
+
+struct ButtonHandler
+{
+  ButtonState state;
+  uint32_t pressStartTime;
+  uint32_t releaseTime;
+  bool isPressed;
+  bool lastButtonReading;
+};
+
+ButtonHandler buttonHandler = {BTN_IDLE, 0, 0, false, HIGH};
+
 // Effects system
 enum EffectType
 {
   EFFECT_NONE = 0,
   EFFECT_COLOR_WANDER = 1,
-  EFFECT_LEVEL_PULSE = 2
+  EFFECT_LEVEL_PULSE = 2,
+  MAX_EFFECT_NUMBER = 3
+};
+
+// Special modes for LED control
+enum SpecialMode
+{
+  MODE_NORMAL = 0,
+  MODE_RESET_BLINKING = 1,
+  MODE_EFFECT_BLINKING = 2
 };
 
 struct EffectState
@@ -100,6 +135,15 @@ struct LightState
   // Final output values (base + effects - sent to LEDs)
   float final_r, final_g, final_b; // Final RGB after effects (0.0-255.0)
   float final_level;               // Final brightness after effects (0.0-255.0)
+
+  // Special modes
+  SpecialMode specialMode;      // Current special mode
+  uint32_t modeStartTime;       // When special mode started
+  uint8_t blinkCount;           // Number of blinks remaining (for effect blinking)
+  uint32_t lastBlinkTime;       // Last blink toggle time
+  bool blinkOn;                 // Current blink state
+  float savedR, savedG, savedB; // Saved current color for blinking
+  EffectType savedEffect;       // Saved effect type during blinking
 };
 
 LightState lightState = {
@@ -115,7 +159,16 @@ LightState lightState = {
 
     // Initialize final values
     0.0f, 0.0f, 0.0f, // final RGB
-    0.0f              // final level
+    0.0f,             // final level
+
+    // Initialize special modes
+    MODE_NORMAL,      // specialMode
+    0,                // modeStartTime
+    0,                // blinkCount
+    0,                // lastBlinkTime
+    false,            // blinkOn
+    0.0f, 0.0f, 0.0f, // savedR, savedG, savedB
+    EFFECT_NONE       // savedEffect
 };
 
 EffectState effectState = {
@@ -141,6 +194,124 @@ const float COLOR_WANDER_RANGE = 10.0f; // How far colors can wander from base (
 const float COLOR_WANDER_SPEED = 0.01f; // Speed of color wandering
 const float LEVEL_PULSE_RANGE = 0.4f;   // Pulse range as fraction of base level (0.0-1.0)
 const float LEVEL_PULSE_SPEED = 0.01f;  // Speed of level pulsation
+
+// Effect management functions
+void switchToNextEffect()
+{
+  effectState.type = (EffectType)((effectState.type + 1) % MAX_EFFECT_NUMBER);
+  effectState.startTime = millis();
+  effectState.phase1 = 0.0f;
+  effectState.phase2 = 0.0f;
+  effectState.phase3 = 0.0f;
+
+  Serial.printf("Switched to effect: %d\n", effectState.type);
+}
+
+void blinkEffectNumber(uint8_t effectNum)
+{
+  if (xSemaphoreTake(colorMutex, pdMS_TO_TICKS(50)) == pdTRUE)
+  {
+    // Save current state
+    lightState.savedR = lightState.final_r;
+    lightState.savedG = lightState.final_g;
+    lightState.savedB = lightState.final_b;
+    lightState.savedEffect = effectState.type;
+
+    // Start effect blinking mode
+    lightState.specialMode = MODE_EFFECT_BLINKING;
+    lightState.modeStartTime = millis();
+    lightState.blinkCount = effectNum; // Number of complete pulse cycles
+    lightState.lastBlinkTime = millis();
+    lightState.blinkOn = true;
+
+    // Temporarily disable effects
+    effectState.type = EFFECT_NONE;
+
+    Serial.printf("Starting blink mode: %d blinks (count=%d)\n", effectNum, lightState.blinkCount);
+    xSemaphoreGive(colorMutex);
+  }
+}
+
+void toggleLightState()
+{
+  bool newState;
+
+  // Update internal state first
+  if (xSemaphoreTake(colorMutex, pdMS_TO_TICKS(50)) == pdTRUE)
+  {
+    lightState.target_state = !lightState.target_state;
+    lightState.target_level = lightState.target_state ? 255 : 0;
+    newState = lightState.target_state;
+    xSemaphoreGive(colorMutex);
+  }
+  else
+  {
+    Serial.println("Failed to acquire mutex for light toggle");
+    return;
+  }
+
+  // Update coordinator state outside mutex to avoid deadlock
+  pelarboj->setLightState(newState);
+  pelarboj->zbUpdateStateFromAttributes();
+
+  Serial.printf("Toggled light: %s\n", newState ? "ON" : "OFF");
+}
+
+void performFactoryReset()
+{
+  Serial.println("=== Factory Reset Initiated ===");
+
+  // Start reset blinking mode - LED task will handle blinking
+  if (xSemaphoreTake(colorMutex, pdMS_TO_TICKS(50)) == pdTRUE)
+  {
+    lightState.specialMode = MODE_RESET_BLINKING;
+    lightState.modeStartTime = millis();
+    xSemaphoreGive(colorMutex);
+  }
+
+  // Wait for 5 seconds while checking if button is still pressed
+  for (int i = 0; i < 50; i++)
+  { // Check every 100ms for 5 seconds
+    if (digitalRead(BOOT_PIN) == HIGH)
+    { // Button released
+      Serial.println("Button released - reset cancelled");
+
+      // Stop reset mode and restore normal operation
+      if (xSemaphoreTake(colorMutex, pdMS_TO_TICKS(50)) == pdTRUE)
+      {
+        lightState.specialMode = MODE_NORMAL;
+        xSemaphoreGive(colorMutex);
+      }
+
+      digitalWrite(LED_BUILTIN, LOW);
+      return; // Exit without resetting
+    }
+    vTaskDelay(pdMS_TO_TICKS(100));
+  }
+
+  // If we get here, button was held for full 5 seconds - proceed with reset
+  Serial.println("Reset confirmed - proceeding with factory reset");
+
+  // Stop reset mode and turn off LEDs
+  if (xSemaphoreTake(colorMutex, pdMS_TO_TICKS(50)) == pdTRUE)
+  {
+    lightState.specialMode = MODE_NORMAL;
+    lightState.final_r = 0.0f;
+    lightState.final_g = 0.0f;
+    lightState.final_b = 0.0f;
+    lightState.final_level = 0.0f;
+    xSemaphoreGive(colorMutex);
+  }
+
+  digitalWrite(LED_BUILTIN, LOW);
+
+  Serial.println("Resetting Zigbee network...");
+  Zigbee.factoryReset();
+
+  Serial.println("System reset complete - device will restart");
+  vTaskDelay(pdMS_TO_TICKS(500));
+  ESP.restart();
+}
 
 // Apply effects to base color and return final output values
 void applyEffects(float baseR, float baseG, float baseB, float baseLevel,
@@ -203,29 +374,188 @@ void applyEffects(float baseR, float baseG, float baseB, float baseLevel,
 }
 
 // LED update task that handles smooth color interpolation and effects
+// Button handling task - runs independently
+void buttonTask(void *parameter)
+{
+  while (true)
+  {
+    uint32_t currentTime = millis();
+    bool currentReading = digitalRead(BOOT_PIN) == LOW; // LOW = pressed
+
+    // Debounce logic
+    if (currentReading != buttonHandler.lastButtonReading)
+    {
+      buttonHandler.lastButtonReading = currentReading;
+      vTaskDelay(pdMS_TO_TICKS(DEBOUNCE_TIME_MS));
+      continue;
+    }
+
+    // State machine for button handling
+    switch (buttonHandler.state)
+    {
+    case BTN_IDLE:
+      if (currentReading && !buttonHandler.isPressed)
+      {
+        buttonHandler.isPressed = true;
+        buttonHandler.pressStartTime = currentTime;
+        buttonHandler.state = BTN_FIRST_PRESS;
+        Serial.println("Button pressed - first press detected");
+      }
+      break;
+
+    case BTN_FIRST_PRESS:
+      if (!currentReading && buttonHandler.isPressed)
+      {
+        // Button released after first press
+        buttonHandler.isPressed = false;
+        buttonHandler.releaseTime = currentTime;
+        buttonHandler.state = BTN_WAITING_SECOND;
+        Serial.println("Button released - waiting for second press");
+      }
+      else if (currentReading && (currentTime - buttonHandler.pressStartTime) >= LONG_PRESS_TIME_MS)
+      {
+        // Long press detected
+        buttonHandler.state = BTN_LONG_PRESS_ACTIVE;
+        Serial.println("Long press detected - factory reset");
+        performFactoryReset();
+        buttonHandler.state = BTN_IDLE;
+        buttonHandler.isPressed = false;
+      }
+      break;
+
+    case BTN_WAITING_SECOND:
+      if (currentReading && !buttonHandler.isPressed)
+      {
+        // Second press detected
+        buttonHandler.isPressed = true;
+        buttonHandler.pressStartTime = currentTime;
+        buttonHandler.state = BTN_SECOND_PRESS;
+        Serial.println("Second press detected - double press");
+      }
+      else if ((currentTime - buttonHandler.releaseTime) >= DOUBLE_PRESS_WINDOW_MS)
+      {
+        // Timeout - single press confirmed
+        Serial.println("Single press confirmed - toggling light");
+        toggleLightState();
+        buttonHandler.state = BTN_IDLE;
+      }
+      break;
+
+    case BTN_SECOND_PRESS:
+      if (!currentReading && buttonHandler.isPressed)
+      {
+        // Second press completed - double press confirmed
+        buttonHandler.isPressed = false;
+        Serial.println("Double press confirmed - switching effect");
+        switchToNextEffect();
+        // Blink the effect number (1-3) instead of enum value (0-2)
+        blinkEffectNumber(effectState.type == EFFECT_NONE ? 1 : effectState.type == EFFECT_COLOR_WANDER ? 2
+                                                                                                        : 3);
+        buttonHandler.state = BTN_IDLE;
+      }
+      else if (currentReading && (currentTime - buttonHandler.pressStartTime) >= LONG_PRESS_TIME_MS)
+      {
+        // Long press during second press
+        buttonHandler.state = BTN_LONG_PRESS_ACTIVE;
+        Serial.println("Long press during second press - factory reset");
+        performFactoryReset();
+        buttonHandler.state = BTN_IDLE;
+        buttonHandler.isPressed = false;
+      }
+      break;
+
+    case BTN_LONG_PRESS_ACTIVE:
+      // This state is handled above, reset when button released
+      if (!currentReading)
+      {
+        buttonHandler.state = BTN_IDLE;
+        buttonHandler.isPressed = false;
+      }
+      break;
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(10)); // Check every 10ms
+  }
+}
+
 void ledUpdateTask(void *parameter)
 {
   while (true)
   {
-    if (xSemaphoreTake(colorMutex, pdMS_TO_TICKS(10)) == pdTRUE)
+    if (xSemaphoreTake(colorMutex, pdMS_TO_TICKS(5)) == pdTRUE)
     {
-      // Smooth interpolation toward target values (creates base color)
-      lightState.base_r += (lightState.target_r - lightState.base_r) * TRANSITION_SPEED;
-      lightState.base_g += (lightState.target_g - lightState.base_g) * TRANSITION_SPEED;
-      lightState.base_b += (lightState.target_b - lightState.base_b) * TRANSITION_SPEED;
-      lightState.base_level += (lightState.target_level - lightState.base_level) * TRANSITION_SPEED;
-      lightState.base_state = lightState.target_state;
+      // Check special modes first
+      if (lightState.specialMode == MODE_RESET_BLINKING)
+      {
+        uint32_t elapsed = millis() - lightState.modeStartTime;
 
-      // Apply effects to base values to get final values
-      applyEffects(lightState.base_r, lightState.base_g, lightState.base_b, lightState.base_level,
-                   lightState.final_r, lightState.final_g, lightState.final_b, lightState.final_level);
+        // Slow pulsation during reset (1Hz pulse, 30%-100% range)
+        float pulse = (sin(elapsed * 0.006283f) + 1.0f) * 0.5f; // 0.006283 = 2*PI/1000 for 1Hz
+        float level = 0.3f + (pulse * 0.7f);                    // 30% to 100% range
+
+        lightState.final_r = 255.0f;
+        lightState.final_g = 0.0f;
+        lightState.final_b = 0.0f;
+        lightState.final_level = level * 255.0f;
+
+        // Also pulse built-in LED
+        digitalWrite(LED_BUILTIN, pulse > 0.5f ? HIGH : LOW);
+      }
+      else if (lightState.specialMode == MODE_EFFECT_BLINKING)
+      {
+        uint32_t elapsed = millis() - lightState.modeStartTime;
+
+        // Fast pulsation for effect indication (2Hz pulse, 30%-100% range)
+        float pulse = (sin(elapsed * 0.012566f) + 1.0f) * 0.5f; // 0.012566 = 2*PI/500 for 2Hz
+        float level = 0.3f + (pulse * 0.7f);                    // 30% to 100% range
+
+        // Use saved current color
+        lightState.final_r = lightState.savedR;
+        lightState.final_g = lightState.savedG;
+        lightState.final_b = lightState.savedB;
+        lightState.final_level = level * 255.0f;
+
+        // Count pulses instead of discrete blinks
+        uint32_t pulseCount = elapsed / 500; // One complete pulse cycle every 500ms
+        if (pulseCount >= lightState.blinkCount)
+        {
+          Serial.printf("Pulse mode finished, restoring effect: %d\n", lightState.savedEffect);
+          lightState.specialMode = MODE_NORMAL;
+          effectState.type = lightState.savedEffect; // Restore effect
+        }
+      }
+      else
+      {
+        // Normal operation
+        // Smooth interpolation toward target values (creates base color)
+        lightState.base_r += (lightState.target_r - lightState.base_r) * TRANSITION_SPEED;
+        lightState.base_g += (lightState.target_g - lightState.base_g) * TRANSITION_SPEED;
+        lightState.base_b += (lightState.target_b - lightState.base_b) * TRANSITION_SPEED;
+        lightState.base_level += (lightState.target_level - lightState.base_level) * TRANSITION_SPEED;
+        lightState.base_state = lightState.target_state;
+
+        // Apply effects to base values to get final values
+        applyEffects(lightState.base_r, lightState.base_g, lightState.base_b, lightState.base_level,
+                     lightState.final_r, lightState.final_g, lightState.final_b, lightState.final_level);
+      }
 
       xSemaphoreGive(colorMutex);
 
       // Calculate final RGB values with brightness applied
-      float outputR = lightState.base_state ? (lightState.final_r * (lightState.final_level / 255.0f)) : 0.0f;
-      float outputG = lightState.base_state ? (lightState.final_g * (lightState.final_level / 255.0f)) : 0.0f;
-      float outputB = lightState.base_state ? (lightState.final_b * (lightState.final_level / 255.0f)) : 0.0f;
+      // In special modes, ignore base_state and use final values directly
+      float outputR, outputG, outputB;
+      if (lightState.specialMode != MODE_NORMAL)
+      {
+        outputR = lightState.final_r * (lightState.final_level / 255.0f);
+        outputG = lightState.final_g * (lightState.final_level / 255.0f);
+        outputB = lightState.final_b * (lightState.final_level / 255.0f);
+      }
+      else
+      {
+        outputR = lightState.base_state ? (lightState.final_r * (lightState.final_level / 255.0f)) : 0.0f;
+        outputG = lightState.base_state ? (lightState.final_g * (lightState.final_level / 255.0f)) : 0.0f;
+        outputB = lightState.base_state ? (lightState.final_b * (lightState.final_level / 255.0f)) : 0.0f;
+      }
 
       // Scale to 12-bit PWM range (0-4095) for ultra-smooth output
       uint16_t pwmR = (uint16_t)constrain(outputR * (LED_PWM_MAX_VALUE / 255.0f), 0, LED_PWM_MAX_VALUE);
@@ -371,6 +701,13 @@ void setup()
     xSemaphoreGive(colorMutex);
   }
 
+  // Start button handling task (higher priority to avoid inheritance issues)
+  if (xTaskCreate(buttonTask, "Button_Handler", 2048, NULL, 3, NULL) != pdPASS)
+  {
+    Serial.println("Failed to create button handling task!");
+    ESP.restart();
+  }
+
   // Start LED update task
   if (xTaskCreate(ledUpdateTask, "LED_Update", 4096, NULL, 2, NULL) != pdPASS)
   {
@@ -378,65 +715,14 @@ void setup()
     ESP.restart();
   }
 
-  Serial.println("LED update task started - smooth color transitions enabled");
-}
-
-void resetSystem()
-{
-  Serial.println("=== System Reset ===");
-
-  // Reset Zigbee network
-  Serial.println("Resetting Zigbee network...");
-  Zigbee.factoryReset();
-
-  Serial.println("System reset complete - device will restart");
-  delay(500); // Additional delay to ensure all operations complete
-  ESP.restart();
-}
-
-void checkForReset()
-{
-  // Checking button for factory reset
-  if (digitalRead(BOOT_PIN) == LOW)
-  { // Push button pressed
-    // Key debounce handling
-    vTaskDelay(pdMS_TO_TICKS(100));
-    int startTime = millis();
-    bool ledState = false;
-    unsigned long lastBlink = millis();
-    const int BLINK_INTERVAL = 100; // Fast blink every 100ms
-
-    while (digitalRead(BOOT_PIN) == LOW)
-    {
-      // Fast blink built-in LED while button is held
-      if (millis() - lastBlink >= BLINK_INTERVAL)
-      {
-        ledState = !ledState;
-        digitalWrite(LED_BUILTIN, ledState ? HIGH : LOW);
-        lastBlink = millis();
-      }
-
-      vTaskDelay(pdMS_TO_TICKS(10));
-      ; // Short delay to prevent excessive CPU usage
-
-      if ((millis() - startTime) > 3000)
-      {
-        // If key pressed for more than 3secs, perform unified system reset
-        Serial.println("Button held for 3+ seconds - performing full system reset");
-        digitalWrite(LED_BUILTIN, LOW); // Turn off LED before reset
-        resetSystem();
-      }
-    }
-
-    // Button released - turn off LED
-    digitalWrite(LED_BUILTIN, LOW);
-  }
+  Serial.println("Button and LED tasks started - enhanced button functionality enabled");
 }
 
 // void loop runs over and over again
 void loop()
 {
-  checkForReset();
+  // Button handling is now done in async task
+  // Just keep the built-in LED heartbeat
   digitalWrite(LED_BUILTIN, HIGH);
   delay(500);
   digitalWrite(LED_BUILTIN, LOW);

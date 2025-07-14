@@ -19,8 +19,10 @@ Project inspired by [HomeSpan-IKEA-PELARBOJ](https://github.com/n0rt0nthec4t/Hom
 - **Three-Tier State Management**: Target → Base → Final (with effects)
 - **Hue Integration**: Uses Phillips Hue distributed network key
 - **Device Profile**: Configured as "nkey Pelarboj" color light
-- **Factory Reset**: Boot button (3+ seconds) for network reset
-- **Connection Status**: LED indicators during pairing and operation
+- **Enhanced Button Control**: Smart button handling with single/double/long press detection
+- **Factory Reset**: Boot button (5+ seconds) with red pulsation confirmation
+- **Effect Switching**: Double-press button to cycle through effects with visual feedback
+- **Visual Feedback**: Smooth pulsation instead of harsh blinking for all status indicators
 
 ## Build Commands
 ```bash
@@ -58,12 +60,16 @@ pio device monitor -b 115200
 - **Raw Commands Handled**: Basic (0), Level Control (8), Color Control (768)
 
 ## Features Working
-- **On/Off Control**: Device responds to power state commands
+- **On/Off Control**: Device responds to power state commands + single button press
 - **Ultra-Smooth Brightness**: 12-bit PWM provides 4096 brightness levels (16x smoother than 8-bit)
 - **Professional Color Control**: 68.7 billion color combinations with imperceptible stepping
-- **Dynamic Effects**: Two built-in effects with random selection at startup
+- **Dynamic Effects**: Three effects with manual switching via double-press button
 - **Color Wander Effect**: Colors randomly drift around base color from coordinator
 - **Level Pulse Effect**: Brightness smoothly pulsates around base level
+- **Effect Switching**: Double-press button cycles through effects with numbered pulse feedback
+- **Factory Reset**: Long-press button (5s) with red pulsation confirmation
+- **Smart Button Handling**: Debounced state machine with single/double/long press detection
+- **Visual Status Feedback**: Smooth pulsation (30%-100%) for all status indicators
 - **State Reporting**: Device reports initial state to coordinator after startup
 - **Race-Free Synchronization**: Coordinator and internal states perfectly synchronized
 - **Premium Transitions**: All changes interpolate with professional-grade smoothness
@@ -73,9 +79,11 @@ pio device monitor -b 115200
 - **Effects System**: `applyEffects(base_color, EFFECT_TYPE, time)` architecture
 - **12-bit PWM Resolution**: 4096 levels per channel (0-4095) at 5kHz frequency
 - **Professional Scaling**: `colorValue * (4095 / 255.0f)` for maximum smoothness
-- **Interpolation Task**: Dedicated FreeRTOS task running at 50 FPS (20ms intervals)
-- **State Structure**: Enhanced `LightState` with base, target, and final value sets
-- **Thread Safety**: Mutex protection for concurrent access between task and callbacks
+- **Dual FreeRTOS Tasks**: Separate tasks for LED updates (50 FPS) and button handling (100 Hz)
+- **Button State Machine**: Debounced detection of single/double/long press patterns
+- **Special Modes**: Reset pulsation (1Hz red, 30%-100%) and effect feedback (2Hz, 30%-100%)
+- **State Structure**: Enhanced `LightState` with base, target, final, and special mode support
+- **Thread Safety**: Mutex protection for concurrent access between tasks and callbacks
 - **Transition Speed**: Configurable interpolation rate (0.1 = gradual, 1.0 = instant)
 - **Effect Parameters**: Configurable speed and range for each effect type
 - **LED Scaling**: Final output = `final_color * (final_level / 255.0f)`
@@ -90,6 +98,10 @@ pio device monitor -b 115200
 - ✅ **Optimized PWM Frequency**: 5kHz frequency for optimal 12-bit performance
 - ✅ **Scaling Pipeline**: Automatic 8-bit to 12-bit conversion throughout codebase
 - ✅ **Premium Smoothness**: Imperceptible stepping in all transitions and effects
+- ✅ **Enhanced Button Control**: Added comprehensive button handling with state machine
+- ✅ **Smart Visual Feedback**: Replaced harsh blinking with smooth pulsation (30%-100%)
+- ✅ **Effect Management**: Added manual effect switching with numbered pulse feedback
+- ✅ **Factory Reset UX**: Improved reset confirmation with red pulsation during 5s hold
 
 ## PWM & Effects Details
 - **PWM Resolution**: 12-bit (4096 levels) at 5kHz frequency for ultra-smooth output
@@ -111,6 +123,6 @@ pio device monitor -b 115200
 - [x] Upgrade to 12-bit PWM resolution for professional smoothness
 - [ ] Add more effect types (strobe, rainbow, fireplace, etc.)
 - [ ] Integrate color temperature control
-- [ ] Add physical button for on/off state changes and effect switching
+- [x] Add physical button for on/off state changes and effect switching
 - [ ] Add brightness dimming ranges
 - [ ] Implement network configuration interface
