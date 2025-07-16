@@ -66,6 +66,7 @@ void hueToRGB(uint8_t hue, uint8_t brightness, uint32_t &R, uint32_t &G, uint32_
 const uint8_t ledR = D0;
 const uint8_t ledG = D1;
 const uint8_t ledB = D2;
+const uint8_t EXTERNAL_BUTTON_PIN = D6;
 
 const uint8_t ENDPOINT = 10;
 
@@ -121,16 +122,16 @@ struct EffectState
   EffectType type;
   unsigned long startTime;
   float phase1, phase2, phase3; // Multiple phase counters for complex effects
-  
+
   // Scene change effect state
-  float sceneTargetR, sceneTargetG, sceneTargetB; // Target color for scene change
-  float sceneTargetLevel;                         // Target level for scene change
+  float sceneTargetR, sceneTargetG, sceneTargetB;    // Target color for scene change
+  float sceneTargetLevel;                            // Target level for scene change
   float sceneCurrentR, sceneCurrentG, sceneCurrentB; // Current scene color during transition
-  float sceneCurrentLevel;                        // Current scene level during transition
-  unsigned long sceneChangeTime;                  // When the current scene change started
-  unsigned long sceneHoldTime;                    // How long to hold current scene (5-10s random)
-  unsigned long sceneTransitionTime;              // How long transition should take (1-2s, set once)
-  bool sceneTransitioning;                        // True if transitioning, false if holding
+  float sceneCurrentLevel;                           // Current scene level during transition
+  unsigned long sceneChangeTime;                     // When the current scene change started
+  unsigned long sceneHoldTime;                       // How long to hold current scene (5-10s random)
+  unsigned long sceneTransitionTime;                 // How long transition should take (1-2s, set once)
+  bool sceneTransitioning;                           // True if transitioning, false if holding
 };
 
 // Light state structure with current and target values
@@ -189,16 +190,16 @@ EffectState effectState = {
     EFFECT_COLOR_WANDER, // Start with color wander effect
     0,                   // Will be set when effect starts
     0.0f, 0.0f, 0.0f,    // Phase counters
-    
+
     // Scene change effect initialization
-    0.0f, 0.0f, 0.0f,    // sceneTargetR, sceneTargetG, sceneTargetB
-    0.0f,                // sceneTargetLevel
-    0.0f, 0.0f, 0.0f,    // sceneCurrentR, sceneCurrentG, sceneCurrentB
-    0.0f,                // sceneCurrentLevel
-    0,                   // sceneChangeTime
-    0,                   // sceneHoldTime
-    0,                   // sceneTransitionTime
-    false                // sceneTransitioning
+    0.0f, 0.0f, 0.0f, // sceneTargetR, sceneTargetG, sceneTargetB
+    0.0f,             // sceneTargetLevel
+    0.0f, 0.0f, 0.0f, // sceneCurrentR, sceneCurrentG, sceneCurrentB
+    0.0f,             // sceneCurrentLevel
+    0,                // sceneChangeTime
+    0,                // sceneHoldTime
+    0,                // sceneTransitionTime
+    false             // sceneTransitioning
 };
 
 SemaphoreHandle_t colorMutex;
@@ -220,15 +221,14 @@ const float LEVEL_PULSE_RANGE = 0.4f;   // Pulse range as fraction of base level
 const float LEVEL_PULSE_SPEED = 0.01f;  // Speed of level pulsation
 
 // Fireplace effect parameters
-const float FIREPLACE_FLICKER_SPEED = 0.08f;   // Speed of flame flickering (faster)
-const float FIREPLACE_INTENSITY_RANGE = 0.3f;  // How much brightness can vary (reduced range)
-const float FIREPLACE_RED_BOOST = 1.1f;        // Subtle red boost for warm fire colors
-const float FIREPLACE_ORANGE_MIX = 0.15f;      // Subtle orange mix to stay closer to base
+const float FIREPLACE_FLICKER_SPEED = 0.08f;  // Speed of flame flickering (faster)
+const float FIREPLACE_INTENSITY_RANGE = 0.3f; // How much brightness can vary (reduced range)
+const float FIREPLACE_RED_BOOST = 1.1f;       // Subtle red boost for warm fire colors
+const float FIREPLACE_ORANGE_MIX = 0.15f;     // Subtle orange mix to stay closer to base
 
 // Rainbow effect parameters
-const float RAINBOW_CYCLE_SPEED = 0.02f;       // Speed of color spectrum cycling (faster)
-const float RAINBOW_SATURATION = 0.8f;         // How vivid the rainbow colors are (0.0-1.0)
-
+const float RAINBOW_CYCLE_SPEED = 0.02f; // Speed of color spectrum cycling (faster)
+const float RAINBOW_SATURATION = 0.8f;   // How vivid the rainbow colors are (0.0-1.0)
 
 // Effect management functions
 void switchToNextEffect()
@@ -238,7 +238,7 @@ void switchToNextEffect()
   effectState.phase1 = 0.0f;
   effectState.phase2 = 0.0f;
   effectState.phase3 = 0.0f;
-  
+
   // Reset scene change state when switching to/from scene change effect
   effectState.sceneChangeTime = 0;
   effectState.sceneHoldTime = 0;
@@ -313,7 +313,7 @@ void performFactoryReset()
   // Wait for 5 seconds while checking if button is still pressed
   for (int i = 0; i < 50; i++)
   { // Check every 100ms for 5 seconds
-    if (digitalRead(BOOT_PIN) == HIGH)
+    if (digitalRead(BOOT_PIN) == HIGH && digitalRead(EXTERNAL_BUTTON_PIN) == HIGH)
     { // Button released
       Serial.println("Button released - reset cancelled");
 
@@ -347,7 +347,7 @@ void performFactoryReset()
   digitalWrite(LED_BUILTIN, LOW);
 
   Serial.println("Resetting Zigbee network...");
-  Zigbee.factoryReset();
+  // Zigbee.factoryReset();
 
   Serial.println("System reset complete - device will restart");
   vTaskDelay(pdMS_TO_TICKS(500));
@@ -411,9 +411,9 @@ void applyEffects(float baseR, float baseG, float baseB, float baseLevel,
   {
     // Combine color wandering and level pulsation
     // Update phase counters at different speeds for organic movement
-    effectState.phase1 += COLOR_WANDER_SPEED * 1.0f;  // For color wander R
-    effectState.phase2 += COLOR_WANDER_SPEED * 1.3f;  // For color wander G
-    effectState.phase3 += COLOR_WANDER_SPEED * 0.7f;  // For color wander B
+    effectState.phase1 += COLOR_WANDER_SPEED * 1.0f; // For color wander R
+    effectState.phase2 += COLOR_WANDER_SPEED * 1.3f; // For color wander G
+    effectState.phase3 += COLOR_WANDER_SPEED * 0.7f; // For color wander B
 
     // Generate smooth wandering offsets using sine waves
     float offsetR = sin(effectState.phase1) * COLOR_WANDER_RANGE;
@@ -445,25 +445,25 @@ void applyEffects(float baseR, float baseG, float baseB, float baseLevel,
       effectState.sceneCurrentG = baseG;
       effectState.sceneCurrentB = baseB;
       effectState.sceneCurrentLevel = baseLevel;
-      
+
       // Generate first target based on base color variations
       effectState.sceneTargetR = constrain(baseR + random(-50, 51), 0, 255);
       effectState.sceneTargetG = constrain(baseG + random(-50, 51), 0, 255);
       effectState.sceneTargetB = constrain(baseB + random(-50, 51), 0, 255);
       effectState.sceneTargetLevel = constrain(baseLevel + random(-50, 51), 50, 255);
-      
+
       effectState.sceneChangeTime = millis();
-      effectState.sceneHoldTime = random(5000, 10000); // 5-10 seconds hold
+      effectState.sceneHoldTime = random(5000, 10000);      // 5-10 seconds hold
       effectState.sceneTransitionTime = random(1000, 2000); // 1-2 seconds transition
       effectState.sceneTransitioning = true;
-      
-      Serial.printf("Scene change: New target R=%d G=%d B=%d L=%d\n", 
-                   (int)effectState.sceneTargetR, (int)effectState.sceneTargetG, 
-                   (int)effectState.sceneTargetB, (int)effectState.sceneTargetLevel);
+
+      Serial.printf("Scene change: New target R=%d G=%d B=%d L=%d\n",
+                    (int)effectState.sceneTargetR, (int)effectState.sceneTargetG,
+                    (int)effectState.sceneTargetB, (int)effectState.sceneTargetLevel);
     }
-    
+
     unsigned long sceneElapsed = millis() - effectState.sceneChangeTime;
-    
+
     if (effectState.sceneTransitioning)
     {
       // Transition phase (1-2 seconds, time set once at start)
@@ -472,15 +472,15 @@ void applyEffects(float baseR, float baseG, float baseB, float baseLevel,
         // Smooth interpolation to target using fixed transition time
         float progress = (float)sceneElapsed / effectState.sceneTransitionTime;
         progress = min(progress, 1.0f);
-        
+
         // Use exponential interpolation for smoother transitions
         float smoothProgress = progress * progress * (3.0f - 2.0f * progress); // Smoothstep
-        
+
         effectState.sceneCurrentR = effectState.sceneCurrentR + (effectState.sceneTargetR - effectState.sceneCurrentR) * smoothProgress * 0.1f;
         effectState.sceneCurrentG = effectState.sceneCurrentG + (effectState.sceneTargetG - effectState.sceneCurrentG) * smoothProgress * 0.1f;
         effectState.sceneCurrentB = effectState.sceneCurrentB + (effectState.sceneTargetB - effectState.sceneCurrentB) * smoothProgress * 0.1f;
         effectState.sceneCurrentLevel = effectState.sceneCurrentLevel + (effectState.sceneTargetLevel - effectState.sceneCurrentLevel) * smoothProgress * 0.1f;
-        
+
         finalR = effectState.sceneCurrentR;
         finalG = effectState.sceneCurrentG;
         finalB = effectState.sceneCurrentB;
@@ -495,7 +495,7 @@ void applyEffects(float baseR, float baseG, float baseB, float baseLevel,
         effectState.sceneCurrentLevel = effectState.sceneTargetLevel;
         effectState.sceneTransitioning = false;
         effectState.sceneChangeTime = millis(); // Reset timer for hold phase
-        
+
         finalR = effectState.sceneCurrentR;
         finalG = effectState.sceneCurrentG;
         finalB = effectState.sceneCurrentB;
@@ -520,16 +520,16 @@ void applyEffects(float baseR, float baseG, float baseB, float baseLevel,
         effectState.sceneTargetG = constrain(baseG + random(-50, 51), 0, 255);
         effectState.sceneTargetB = constrain(baseB + random(-50, 51), 0, 255);
         effectState.sceneTargetLevel = constrain(baseLevel + random(-50, 51), 50, 255);
-        
+
         effectState.sceneChangeTime = millis();
-        effectState.sceneHoldTime = random(5000, 10000); // New hold time
+        effectState.sceneHoldTime = random(5000, 10000);      // New hold time
         effectState.sceneTransitionTime = random(1000, 2000); // New transition time
         effectState.sceneTransitioning = true;
-        
-        Serial.printf("Scene change: New target R=%d G=%d B=%d L=%d\n", 
-                     (int)effectState.sceneTargetR, (int)effectState.sceneTargetG, 
-                     (int)effectState.sceneTargetB, (int)effectState.sceneTargetLevel);
-        
+
+        Serial.printf("Scene change: New target R=%d G=%d B=%d L=%d\n",
+                      (int)effectState.sceneTargetR, (int)effectState.sceneTargetG,
+                      (int)effectState.sceneTargetB, (int)effectState.sceneTargetLevel);
+
         // Start interpolating toward new target
         finalR = effectState.sceneCurrentR;
         finalG = effectState.sceneCurrentG;
@@ -544,27 +544,27 @@ void applyEffects(float baseR, float baseG, float baseB, float baseLevel,
   {
     // Simulate realistic fireplace flickering with warm colors
     // Update multiple phase counters for organic flame movement
-    effectState.phase1 += FIREPLACE_FLICKER_SPEED * 1.0f;  // Main flicker
-    effectState.phase2 += FIREPLACE_FLICKER_SPEED * 1.7f;  // Secondary flicker
-    effectState.phase3 += FIREPLACE_FLICKER_SPEED * 0.6f;  // Slow ember glow
-    
+    effectState.phase1 += FIREPLACE_FLICKER_SPEED * 1.0f; // Main flicker
+    effectState.phase2 += FIREPLACE_FLICKER_SPEED * 1.7f; // Secondary flicker
+    effectState.phase3 += FIREPLACE_FLICKER_SPEED * 0.6f; // Slow ember glow
+
     // Generate multiple sine waves for realistic flame behavior
     float mainFlicker = sin(effectState.phase1);
     float secondaryFlicker = sin(effectState.phase2) * 0.4f;
     float emberGlow = sin(effectState.phase3) * 0.2f;
-    
+
     // Combine flickers with bias toward brighter flames
     float totalFlicker = (mainFlicker + secondaryFlicker + emberGlow + 1.5f) / 3.5f;
     totalFlicker = constrain(totalFlicker, 0.0f, 1.0f);
-    
+
     // Create subtle warm fire colors closer to base
     float fireRed = baseR * FIREPLACE_RED_BOOST;
     float fireGreen = baseG * (0.9f + FIREPLACE_ORANGE_MIX * totalFlicker); // Subtle orange tint
-    float fireBlue = baseB * 0.8f; // Slightly reduce blue for warmth
-    
+    float fireBlue = baseB * 0.8f;                                          // Slightly reduce blue for warmth
+
     // Apply intensity variations for flickering (reduced range)
     float intensity = 1.0f - (FIREPLACE_INTENSITY_RANGE * (1.0f - totalFlicker));
-    
+
     // Constrain colors to valid range
     finalR = constrain(fireRed, 0.0f, 255.0f);
     finalG = constrain(fireGreen, 0.0f, 255.0f);
@@ -577,37 +577,42 @@ void applyEffects(float baseR, float baseG, float baseB, float baseLevel,
   {
     // Smooth rainbow color cycling based on base color
     effectState.phase1 += RAINBOW_CYCLE_SPEED;
-    
+
     // Cycle hue around base color (±120 degrees for variety while staying related)
     float hueOffset = sin(effectState.phase1) * 120.0f; // -120 to +120 degrees
-    
+
     // Convert base color to approximate hue for starting point
     float baseHue = 0.0f;
-    if (baseR >= baseG && baseR >= baseB) {
+    if (baseR >= baseG && baseR >= baseB)
+    {
       // Red dominant
       baseHue = 0.0f + (baseG - baseB) / (baseR - min(baseG, baseB)) * 60.0f;
-    } else if (baseG >= baseR && baseG >= baseB) {
-      // Green dominant  
+    }
+    else if (baseG >= baseR && baseG >= baseB)
+    {
+      // Green dominant
       baseHue = 120.0f + (baseB - baseR) / (baseG - min(baseR, baseB)) * 60.0f;
-    } else {
+    }
+    else
+    {
       // Blue dominant
       baseHue = 240.0f + (baseR - baseG) / (baseB - min(baseR, baseG)) * 60.0f;
     }
-    
+
     // Calculate final hue with offset
     uint8_t finalHue = (uint8_t)constrain((baseHue + hueOffset) * 255.0f / 360.0f, 0, 255);
-    
+
     // Use existing hueToRGB function with base brightness
     uint32_t rainbowR, rainbowG, rainbowB;
     hueToRGB(finalHue, (uint8_t)baseLevel, rainbowR, rainbowG, rainbowB);
-    
-    // Blend with base color to maintain base characteristics  
+
+    // Blend with base color to maintain base characteristics
     float blendFactor = 0.08f; // 8% rainbow, 92% base color
     finalR = rainbowR * blendFactor + baseR * (1.0f - blendFactor);
     finalG = rainbowG * blendFactor + baseG * (1.0f - blendFactor);
     finalB = rainbowB * blendFactor + baseB * (1.0f - blendFactor);
     finalLevel = baseLevel; // Keep original brightness level
-    
+
     // Constrain to valid range
     finalR = constrain(finalR, 0.0f, 255.0f);
     finalG = constrain(finalG, 0.0f, 255.0f);
@@ -629,7 +634,7 @@ void buttonTask(void *parameter)
   while (true)
   {
     uint32_t currentTime = millis();
-    bool currentReading = digitalRead(BOOT_PIN) == LOW; // LOW = pressed
+    bool currentReading = (digitalRead(BOOT_PIN) == LOW) || (digitalRead(EXTERNAL_BUTTON_PIN) == LOW);
 
     // Debounce logic
     if (currentReading != buttonHandler.lastButtonReading)
@@ -849,6 +854,7 @@ void setup()
   delay(10);
 
   pinMode(BOOT_PIN, INPUT_PULLUP);
+  pinMode(EXTERNAL_BUTTON_PIN, INPUT_PULLUP);
 
   // Initialize pins as LEDC channels with high resolution
   // 12-bit resolution provides 4096 levels for ultra-smooth transitions
