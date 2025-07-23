@@ -66,7 +66,7 @@ void hueToRGB(uint8_t hue, uint8_t brightness, uint32_t &R, uint32_t &G, uint32_
 const uint8_t ledR = D9;
 const uint8_t ledG = D8;
 const uint8_t ledB = D7;
-const uint8_t EXTERNAL_BUTTON_PIN = D6;
+const uint8_t EXTERNAL_BUTTON_PIN = D0;
 
 const uint8_t ENDPOINT = 10;
 
