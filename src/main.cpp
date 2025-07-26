@@ -1153,6 +1153,9 @@ void setup()
   Serial.begin(115200);
   delay(10);
 
+  // Initialize random seed for truly random effects
+  randomSeed(esp_random());
+
   pinMode(BOOT_PIN, INPUT_PULLUP);
   pinMode(EXTERNAL_BUTTON_PIN, INPUT_PULLUP);
 
