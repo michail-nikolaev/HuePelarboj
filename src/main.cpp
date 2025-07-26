@@ -1088,9 +1088,21 @@ void ledUpdateTask(void *parameter)
         lightState.base_level += (lightState.target_level - lightState.base_level) * TRANSITION_SPEED;
         lightState.base_state = lightState.target_state;
 
-        // Apply effects to base values to get final values
-        applyEffects(lightState.base_r, lightState.base_g, lightState.base_b, lightState.base_level,
-                     lightState.final_r, lightState.final_g, lightState.final_b, lightState.final_level);
+        // Skip effect calculations when light is off for better performance
+        if (lightState.base_state)
+        {
+          // Apply effects to base values to get final values
+          applyEffects(lightState.base_r, lightState.base_g, lightState.base_b, lightState.base_level,
+                       lightState.final_r, lightState.final_g, lightState.final_b, lightState.final_level);
+        }
+        else
+        {
+          // Light is off - just copy base values to final (no effects processing)
+          lightState.final_r = lightState.base_r;
+          lightState.final_g = lightState.base_g;
+          lightState.final_b = lightState.base_b;
+          lightState.final_level = lightState.base_level;
+        }
       }
 
       xSemaphoreGive(colorMutex);
