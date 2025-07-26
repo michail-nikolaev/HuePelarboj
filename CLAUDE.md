@@ -14,7 +14,7 @@ Project inspired by [HomeSpan-IKEA-PELARBOJ](https://github.com/n0rt0nthec4t/Hom
 - **Zigbee Hue Light**: Full ZigbeeHueLight implementation with color support
 - **Ultra-High Resolution PWM**: 12-bit (4096 levels) for professional-grade smoothness
 - **RGB LED Control**: PWM-based control on pins D0, D1, D2 at 5kHz frequency
-- **Dynamic Effects Layer**: Real-time effects applied on top of base colors
+- **Dynamic Effects Layer**: Real-time effects applied on top of base colors  
 - **Smooth Color Interpolation**: FreeRTOS task with 50 FPS updates
 - **Three-Tier State Management**: Target → Base → Final (with effects)
 - **Hue Integration**: Uses Phillips Hue distributed network key
@@ -70,6 +70,10 @@ pio device monitor -b 115200
 - **Scene Change Effect**: Creates color/brightness variations around base color, transitions over 1-2s, holds for 5-10s
 - **Fireplace Effect**: Simulates realistic fire with warm colors, multiple flicker frequencies, and intensity variations
 - **Rainbow Effect**: Cycles hue around base color (±120°) using existing hueToRGB function
+- **Color Steps Effect**: Rapid color jumps around base color with discrete low-FPS appearance
+- **Broken Electricity Effect**: Horror movie-style erratic flickers, blackouts, and electrical surges
+- **Breathing Effect**: Slow organic pulsation like a sleeping creature with subtle warmth variations
+- **Auto-Cycle Effect**: Automatically switches between all other effects randomly every 1-5 minutes
 - **Effect Switching**: Double-press button cycles through effects with numbered pulse feedback
 - **Factory Reset**: Long-press button (5s) with red pulsation confirmation
 - **Smart Button Handling**: Debounced state machine with single/double/long press detection
@@ -122,6 +126,10 @@ pio device monitor -b 115200
 - **EFFECT_SCENE_CHANGE**: Base color variations (±50 RGB units) with smoothstep interpolation (1-2s transition, 5-10s hold)
 - **EFFECT_FIREPLACE**: Warm fire simulation with red boost, reduced blue, 3-frequency flicker, and ember glow
 - **EFFECT_RAINBOW**: Fast hue cycling around base color (±120°) with 8% rainbow, 92% base color blend
+- **EFFECT_COLOR_STEPS**: Rapid color steps with ±30 RGB units change every 1.0s (low-FPS appearance)
+- **EFFECT_BROKEN_ELECTRICITY**: Mostly stable (2-8s intervals) with rare flickers (5% blackout, 10% surge, 85% flicker)
+- **EFFECT_BREATHING**: Slow sine wave breathing (20%-100% brightness) with synchronized color warmth variation (±5 RGB units)
+- **EFFECT_AUTO_CYCLE**: Random effect selection (1-9) with 1-5 minute durations, clean state reset between switches
 - **Phase Counters**: Multiple phase timers for organic, non-repetitive movement
 - **Configurable Timing**: COLOR_WANDER_SPEED (0.01f), LEVEL_PULSE_SPEED (0.01f)
 - **Safe Boundaries**: constrain() ensures values stay within valid RGB/level ranges

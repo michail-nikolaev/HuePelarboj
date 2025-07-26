@@ -106,7 +106,11 @@ enum EffectType
   EFFECT_SCENE_CHANGE = 4,
   EFFECT_FIREPLACE = 5,
   EFFECT_RAINBOW = 6,
-  MAX_EFFECT_NUMBER = 7
+  EFFECT_COLOR_STEPS = 7,
+  EFFECT_BROKEN_ELECTRICITY = 8,
+  EFFECT_BREATHING = 9,
+  EFFECT_AUTO_CYCLE = 10,
+  MAX_EFFECT_NUMBER = 11
 };
 
 // Special modes for LED control
@@ -132,6 +136,18 @@ struct EffectState
   unsigned long sceneHoldTime;                       // How long to hold current scene (5-10s random)
   unsigned long sceneTransitionTime;                 // How long transition should take (1-2s, set once)
   bool sceneTransitioning;                           // True if transitioning, false if holding
+  
+  // Auto-cycle effect state (separate from sub-effects)
+  float autoCycleStartTime;                          // When current sub-effect started
+  float autoCycleDuration;                           // How long current sub-effect should run
+  int autoCycleSubEffect;                            // Current sub-effect (1-9)
+  bool autoCycleNeedsReset;                          // Flag to reset sub-effect state
+  
+  // Auto-cycle transition state for smooth blending
+  bool autoCycleInTransition;                        // True if transitioning between effects
+  float autoCycleTransitionStart;                    // When transition started
+  int autoCyclePrevEffect;                           // Previous effect (for blending from)
+  float autoCyclePrevR, autoCyclePrevG, autoCyclePrevB, autoCyclePrevLevel; // Previous effect output
 };
 
 // Light state structure with current and target values
@@ -217,6 +233,8 @@ const int LED_PWM_MAX_VALUE = 4095; // Maximum PWM value for 12-bit
 // Effect parameters
 const float COLOR_WANDER_RANGE = 10.0f; // How far colors can wander from base (0-255)
 const float COLOR_WANDER_SPEED = 0.01f; // Speed of color wandering
+const float COLOR_STEPS_RANGE = 30.0f; // Range for rapid color steps (0-255)
+const float COLOR_STEPS_INTERVAL = 1.0f; // Time between steps in seconds
 const float LEVEL_PULSE_RANGE = 0.4f;   // Pulse range as fraction of base level (0.0-1.0)
 const float LEVEL_PULSE_SPEED = 0.01f;  // Speed of level pulsation
 
@@ -228,6 +246,27 @@ const float FIREPLACE_ORANGE_MIX = 0.15f;     // Subtle orange mix to stay close
 
 // Rainbow effect parameters
 const float RAINBOW_CYCLE_SPEED = 0.02f; // Speed of color spectrum cycling (faster)
+
+// Broken electricity effect parameters
+const float ELECTRICITY_STABLE_MIN = 5.0f;    // Minimum stable time (2s)
+const float ELECTRICITY_STABLE_MAX = 20.0f;    // Maximum stable time (8s)
+const float ELECTRICITY_BLACKOUT_CHANCE = 0.05f; // 5% chance of complete blackout
+const float ELECTRICITY_SURGE_CHANCE = 0.1f;     // 10% chance of bright surge
+const float ELECTRICITY_FLICKER_CHANCE = 0.85f;  // 85% chance of normal flicker
+const float ELECTRICITY_BLACKOUT_DURATION = 0.15f; // Duration of blackouts (150ms)
+const float ELECTRICITY_SURGE_MULTIPLIER = 1.6f;   // Brightness multiplier for surges
+
+// Breathing effect parameters
+const float BREATHING_SPEED = 0.01f;        // Speed of breathing cycle (very slow)
+const float BREATHING_MIN_LEVEL = 0.2f;      // Minimum brightness (20% of base level)
+const float BREATHING_MAX_LEVEL = 1.0f;      // Maximum brightness (100% of base level)
+const float BREATHING_COLOR_VARIATION = 5.0f; // Subtle color warmth variation (±5 RGB units)
+
+// Auto-cycle effect parameters
+const float AUTO_CYCLE_MIN_TIME = 30.0f;   // Minimum time per effect
+const float AUTO_CYCLE_MAX_TIME = 300.0f;  // Maximum time per effect
+const float AUTO_CYCLE_TRANSITION_TIME = 2.0f; // Smooth transition duration between effects (2s)
+
 const float RAINBOW_SATURATION = 0.8f;   // How vivid the rainbow colors are (0.0-1.0)
 
 // Effect management functions
@@ -620,6 +659,267 @@ void applyEffects(float baseR, float baseG, float baseB, float baseLevel,
   }
   break;
 
+  case EFFECT_COLOR_STEPS:
+  {
+    // Rapid color steps - like color wander but with sudden jumps at intervals
+    // Check if enough time has passed for a new step
+    if (effectState.sceneChangeTime == 0 || (time - effectState.sceneChangeTime) >= COLOR_STEPS_INTERVAL)
+    {
+      // Time for a new color step
+      effectState.sceneChangeTime = time;
+      
+      // Generate new random offsets for each channel, similar to color wander but larger range
+      float offsetR = (random(0, 2001) - 1000) * COLOR_STEPS_RANGE / 1000.0f; // -30 to +30
+      float offsetG = (random(0, 2001) - 1000) * COLOR_STEPS_RANGE / 1000.0f; // -30 to +30  
+      float offsetB = (random(0, 2001) - 1000) * COLOR_STEPS_RANGE / 1000.0f; // -30 to +30
+      
+      // Store the new target in scene variables (reusing existing structure)
+      effectState.sceneTargetR = constrain(baseR + offsetR, 0.0f, 255.0f);
+      effectState.sceneTargetG = constrain(baseG + offsetG, 0.0f, 255.0f);
+      effectState.sceneTargetB = constrain(baseB + offsetB, 0.0f, 255.0f);
+    }
+    
+    // Apply the current step values (instant change - no interpolation)
+    finalR = effectState.sceneTargetR;
+    finalG = effectState.sceneTargetG;
+    finalB = effectState.sceneTargetB;
+  }
+  break;
+
+  case EFFECT_BROKEN_ELECTRICITY:
+  {
+    // Horror movie broken electricity - mostly stable with rare dramatic flickers
+    // Use phase1 as state: 0=stable, 1=in_event, 2=returning_to_stable
+    
+    // Initialize with stable state if first time
+    if (effectState.sceneChangeTime == 0)
+    {
+      effectState.phase1 = 0; // Start in stable state
+      effectState.sceneTargetR = baseR;
+      effectState.sceneTargetG = baseG;
+      effectState.sceneTargetB = baseB;
+      effectState.sceneTargetLevel = baseLevel;
+      
+      // Set next event time (2-8 seconds from now)
+      effectState.sceneTransitionTime = ELECTRICITY_STABLE_MIN + 
+        (random(0, 1001) / 1000.0f) * (ELECTRICITY_STABLE_MAX - ELECTRICITY_STABLE_MIN);
+      effectState.sceneChangeTime = time;
+    }
+    
+    float timeSinceLastChange = time - effectState.sceneChangeTime;
+    
+    if (effectState.phase1 == 0) // Stable state - waiting for next event
+    {
+      if (timeSinceLastChange >= effectState.sceneTransitionTime)
+      {
+        // Time for an electrical event - roll for type
+        float eventRoll = random(0, 1001) / 1000.0f;
+        effectState.phase1 = 1; // Switch to event state
+        
+        if (eventRoll < ELECTRICITY_BLACKOUT_CHANCE)
+        {
+          // Complete blackout
+          effectState.sceneTargetR = 0.0f;
+          effectState.sceneTargetG = 0.0f;
+          effectState.sceneTargetB = 0.0f;
+          effectState.sceneTargetLevel = 0.0f;
+          effectState.sceneTransitionTime = ELECTRICITY_BLACKOUT_DURATION;
+        }
+        else if (eventRoll < ELECTRICITY_BLACKOUT_CHANCE + ELECTRICITY_SURGE_CHANCE)
+        {
+          // Bright surge
+          effectState.sceneTargetR = min(255.0f, baseR * ELECTRICITY_SURGE_MULTIPLIER);
+          effectState.sceneTargetG = min(255.0f, baseG * ELECTRICITY_SURGE_MULTIPLIER);
+          effectState.sceneTargetB = min(255.0f, baseB * ELECTRICITY_SURGE_MULTIPLIER);
+          effectState.sceneTargetLevel = min(255.0f, baseLevel * ELECTRICITY_SURGE_MULTIPLIER);
+          effectState.sceneTransitionTime = 0.1f;
+        }
+        else if (eventRoll < ELECTRICITY_BLACKOUT_CHANCE + ELECTRICITY_SURGE_CHANCE + ELECTRICITY_FLICKER_CHANCE)
+        {
+          // Quick flicker
+          float variation = 0.4f + (random(0, 601) / 1000.0f);
+          effectState.sceneTargetR = baseR * variation;
+          effectState.sceneTargetG = baseG * variation;
+          effectState.sceneTargetB = baseB * variation;
+          effectState.sceneTargetLevel = baseLevel * variation;
+          effectState.sceneTransitionTime = 0.05f + (random(0, 101) / 1000.0f);
+        }
+        else
+        {
+          // No event this time - stay stable
+          effectState.phase1 = 0;
+          effectState.sceneTransitionTime = ELECTRICITY_STABLE_MIN + 
+            (random(0, 1001) / 1000.0f) * (ELECTRICITY_STABLE_MAX - ELECTRICITY_STABLE_MIN);
+        }
+        
+        effectState.sceneChangeTime = time;
+      }
+    }
+    else if (effectState.phase1 == 1) // In event state
+    {
+      if (timeSinceLastChange >= effectState.sceneTransitionTime)
+      {
+        // Event duration over - return to stable
+        effectState.phase1 = 0;
+        effectState.sceneTargetR = baseR;
+        effectState.sceneTargetG = baseG;
+        effectState.sceneTargetB = baseB;
+        effectState.sceneTargetLevel = baseLevel;
+        
+        // Set next stable duration
+        effectState.sceneTransitionTime = ELECTRICITY_STABLE_MIN + 
+          (random(0, 1001) / 1000.0f) * (ELECTRICITY_STABLE_MAX - ELECTRICITY_STABLE_MIN);
+        effectState.sceneChangeTime = time;
+      }
+    }
+    
+    // Apply current electrical state
+    finalR = effectState.sceneTargetR;
+    finalG = effectState.sceneTargetG;
+    finalB = effectState.sceneTargetB;
+    finalLevel = effectState.sceneTargetLevel;
+  }
+  break;
+
+  case EFFECT_BREATHING:
+  {
+    // Slow organic breathing effect - like the light is alive and sleeping
+    // Update breathing phase very slowly for calm, meditative rhythm
+    effectState.phase1 += BREATHING_SPEED;
+    
+    // Create breathing curve using sine wave - smooth inhale and exhale
+    float breathingCycle = sin(effectState.phase1);
+    
+    // Map breathing cycle to brightness range (20% to 100% of base level)
+    float breathingMultiplier = BREATHING_MIN_LEVEL + 
+      (BREATHING_MAX_LEVEL - BREATHING_MIN_LEVEL) * (breathingCycle * 0.5f + 0.5f);
+    
+    // Apply breathing to brightness level
+    finalLevel = constrain(baseLevel * breathingMultiplier, 0.0f, 255.0f);
+    
+    // Add subtle color warmth variation synchronized with breathing
+    // Warmer (more red/yellow) on exhale, cooler (more blue) on inhale
+    float colorVariation = breathingCycle * BREATHING_COLOR_VARIATION;
+    
+    // Slightly increase red/decrease blue on exhale for warmth
+    finalR = constrain(baseR + colorVariation * 0.6f, 0.0f, 255.0f);
+    finalG = constrain(baseG + colorVariation * 0.3f, 0.0f, 255.0f);
+    finalB = constrain(baseB - colorVariation * 0.4f, 0.0f, 255.0f);
+  }
+  break;
+
+  case EFFECT_AUTO_CYCLE:
+  {
+    // Auto-cycle through all other effects randomly with smooth transitions
+    // Uses dedicated auto-cycle variables to avoid conflicts with sub-effects
+    
+    // Initialize auto-cycle if first time
+    if (effectState.autoCycleStartTime == 0)
+    {
+      // Pick random first effect (exclude EFFECT_NONE=0 and EFFECT_AUTO_CYCLE=10)
+      effectState.autoCycleSubEffect = 1 + random(0, 9); // Random from 1-9
+      effectState.autoCycleNeedsReset = true;
+      effectState.autoCycleInTransition = false;
+      
+      // Set random duration for first effect
+      effectState.autoCycleDuration = AUTO_CYCLE_MIN_TIME + 
+        (random(0, 1001) / 1000.0f) * (AUTO_CYCLE_MAX_TIME - AUTO_CYCLE_MIN_TIME);
+      effectState.autoCycleStartTime = time;
+    }
+    
+    // Check if it's time to start transition to next effect
+    if (!effectState.autoCycleInTransition && 
+        (time - effectState.autoCycleStartTime) >= (effectState.autoCycleDuration - AUTO_CYCLE_TRANSITION_TIME))
+    {
+      // Start transition - capture current effect output for blending
+      EffectType originalType = effectState.type;
+      effectState.type = (EffectType)effectState.autoCycleSubEffect;
+      applyEffects(baseR, baseG, baseB, baseLevel, 
+                   effectState.autoCyclePrevR, effectState.autoCyclePrevG, 
+                   effectState.autoCyclePrevB, effectState.autoCyclePrevLevel);
+      effectState.type = originalType;
+      
+      // Set up transition
+      effectState.autoCyclePrevEffect = effectState.autoCycleSubEffect;
+      effectState.autoCycleInTransition = true;
+      effectState.autoCycleTransitionStart = time;
+      
+      // Pick new effect (different from current)
+      int newEffect;
+      do {
+        newEffect = 1 + random(0, 9); // Random from 1-9
+      } while (newEffect == effectState.autoCycleSubEffect);
+      
+      effectState.autoCycleSubEffect = newEffect;
+      effectState.autoCycleNeedsReset = true;
+    }
+    
+    // Check if transition is complete
+    if (effectState.autoCycleInTransition && 
+        (time - effectState.autoCycleTransitionStart) >= AUTO_CYCLE_TRANSITION_TIME)
+    {
+      // Transition complete - start new effect duration
+      effectState.autoCycleInTransition = false;
+      effectState.autoCycleDuration = AUTO_CYCLE_MIN_TIME + 
+        (random(0, 1001) / 1000.0f) * (AUTO_CYCLE_MAX_TIME - AUTO_CYCLE_MIN_TIME);
+      effectState.autoCycleStartTime = time;
+    }
+    
+    // Reset sub-effect state if needed (when switching effects)
+    if (effectState.autoCycleNeedsReset)
+    {
+      // Reset all effect state variables for clean sub-effect start
+      effectState.phase1 = 0;
+      effectState.phase2 = 0;
+      effectState.phase3 = 0;
+      effectState.sceneCurrentR = baseR;
+      effectState.sceneCurrentG = baseG;
+      effectState.sceneCurrentB = baseB;
+      effectState.sceneCurrentLevel = baseLevel;
+      effectState.sceneTargetR = baseR;
+      effectState.sceneTargetG = baseG;
+      effectState.sceneTargetB = baseB;
+      effectState.sceneTargetLevel = baseLevel;
+      effectState.sceneChangeTime = 0;
+      effectState.sceneTransitionTime = 0;
+      effectState.sceneHoldTime = 0;
+      effectState.sceneTransitioning = false;
+      effectState.autoCycleNeedsReset = false;
+    }
+    
+    if (effectState.autoCycleInTransition)
+    {
+      // During transition - blend between previous and current effects
+      float transitionProgress = (time - effectState.autoCycleTransitionStart) / AUTO_CYCLE_TRANSITION_TIME;
+      transitionProgress = constrain(transitionProgress, 0.0f, 1.0f);
+      
+      // Get current effect output
+      EffectType originalType = effectState.type;
+      effectState.type = (EffectType)effectState.autoCycleSubEffect;
+      float currentR, currentG, currentB, currentLevel;
+      applyEffects(baseR, baseG, baseB, baseLevel, currentR, currentG, currentB, currentLevel);
+      effectState.type = originalType;
+      
+      // Smooth interpolation using smoothstep for natural feel
+      float smoothProgress = transitionProgress * transitionProgress * (3.0f - 2.0f * transitionProgress);
+      
+      // Blend between previous and current effects
+      finalR = effectState.autoCyclePrevR * (1.0f - smoothProgress) + currentR * smoothProgress;
+      finalG = effectState.autoCyclePrevG * (1.0f - smoothProgress) + currentG * smoothProgress;
+      finalB = effectState.autoCyclePrevB * (1.0f - smoothProgress) + currentB * smoothProgress;
+      finalLevel = effectState.autoCyclePrevLevel * (1.0f - smoothProgress) + currentLevel * smoothProgress;
+    }
+    else
+    {
+      // Not in transition - run current effect normally
+      EffectType originalType = effectState.type;
+      effectState.type = (EffectType)effectState.autoCycleSubEffect;
+      applyEffects(baseR, baseG, baseB, baseLevel, finalR, finalG, finalB, finalLevel);
+      effectState.type = originalType;
+    }
+  }
+  break;
+
   case EFFECT_NONE:
   default:
     // No effects - final = base
@@ -917,7 +1217,7 @@ void setup()
     delay(100);
   }
 
-  effectState.type = EFFECT_COMBO;
+  effectState.type = EFFECT_AUTO_CYCLE;
   effectState.startTime = millis();
   // Generate random color for startup
   uint8_t startR = random(255);
