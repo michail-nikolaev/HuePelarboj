@@ -1118,15 +1118,38 @@ void ledUpdateTask(void *parameter)
       }
       else
       {
-        outputR = lightState.base_state ? (lightState.final_r * (lightState.final_level / 255.0f)) : 0.0f;
-        outputG = lightState.base_state ? (lightState.final_g * (lightState.final_level / 255.0f)) : 0.0f;
-        outputB = lightState.base_state ? (lightState.final_b * (lightState.final_level / 255.0f)) : 0.0f;
+        if (lightState.base_state)
+        {
+          // Scale up colors so RGB sum equals brightness level
+          float colorSum = lightState.final_r + lightState.final_g + lightState.final_b;
+          if (colorSum > 0 && colorSum < lightState.final_level)
+          {
+            float scaleFactor = lightState.final_level / colorSum;
+            outputR = (lightState.final_r * scaleFactor * (lightState.final_level / 255.0f));
+            outputG = (lightState.final_g * scaleFactor * (lightState.final_level / 255.0f));
+            outputB = (lightState.final_b * scaleFactor * (lightState.final_level / 255.0f));
+          }
+          else
+          {
+            outputR = lightState.final_r * (lightState.final_level / 255.0f);
+            outputG = lightState.final_g * (lightState.final_level / 255.0f);
+            outputB = lightState.final_b * (lightState.final_level / 255.0f);
+          }
+        }
+        else
+        {
+          outputR = 0.0f;
+          outputG = 0.0f;
+          outputB = 0.0f;
+        }
       }
 
       // Scale to 12-bit PWM range (0-4095) for ultra-smooth output
       uint16_t pwmR = (uint16_t)constrain(outputR * (LED_PWM_MAX_VALUE / 255.0f), 0, LED_PWM_MAX_VALUE);
       uint16_t pwmG = (uint16_t)constrain(outputG * (LED_PWM_MAX_VALUE / 255.0f), 0, LED_PWM_MAX_VALUE);
       uint16_t pwmB = (uint16_t)constrain(outputB * (LED_PWM_MAX_VALUE / 255.0f), 0, LED_PWM_MAX_VALUE);
+
+      //Serial.printf("%d %d %d\n", pwmR, pwmG, pwmB); 
 
       // Apply to LED hardware with 12-bit resolution
       ledcWrite(ledR, pwmR);
@@ -1235,9 +1258,9 @@ void setup()
   effectState.type = EFFECT_AUTO_CYCLE;
   effectState.startTime = millis();
   // Generate random color for startup
-  uint8_t startR = random(255);
-  uint8_t startG = random(255);
-  uint8_t startB = random(255);
+  uint8_t startR = random(30);
+  uint8_t startG = random(30);
+  uint8_t startB = random(30);
   uint8_t startLevel = 255;
   bool startState = true;
 
