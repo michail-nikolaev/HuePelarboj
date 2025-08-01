@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <Zigbee.h>
+#include <bootloader_random.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
@@ -1186,10 +1187,11 @@ static void staticIdentifyCallback(uint16_t time)
 void setup()
 {
   Serial.begin(115200);
-  delay(10);
 
   // Initialize random seed for truly random effects
+  bootloader_random_enable();
   randomSeed(esp_random());
+  bootloader_random_disable();
 
   pinMode(BOOT_PIN, INPUT_PULLUP);
   pinMode(EXTERNAL_BUTTON_PIN, INPUT_PULLUP);
@@ -1302,8 +1304,6 @@ void setup()
     Serial.println("Failed to create LED update task!");
     ESP.restart();
   }
-
-  Serial.println("Button and LED tasks started - enhanced button functionality enabled");
 }
 
 // void loop runs over and over again
