@@ -3,6 +3,7 @@
 #include <bootloader_random.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#include <esp_adc/adc_oneshot.h>
 
 // Courtesy http://www.instructables.com/id/How-to-Use-an-RGB-LED/?ALLSTEPS
 // function to convert a color to its Red, Green, and Blue components.
@@ -68,6 +69,7 @@ const uint8_t ledR = D9;
 const uint8_t ledG = D8;
 const uint8_t ledB = D7;
 const uint8_t EXTERNAL_BUTTON_PIN = D0;
+const adc_channel_t RANDOM_SOURCE_PIN = ADC_CHANNEL_1;
 
 const uint8_t ENDPOINT = 10;
 
@@ -75,6 +77,11 @@ const uint8_t ENDPOINT = 10;
 const uint32_t DEBOUNCE_TIME_MS = 50;
 const uint32_t DOUBLE_PRESS_WINDOW_MS = 300;
 const uint32_t LONG_PRESS_TIME_MS = 5000;
+
+int random_seed = 0;
+
+// ADC oneshot handle for hardware random generation
+adc_oneshot_unit_handle_t adc_handle;
 
 // Button state machine
 enum ButtonState
@@ -1190,11 +1197,25 @@ void setup()
 
   // Initialize random seed for truly random effects
   bootloader_random_enable();
-  randomSeed(esp_random());
+  random_seed = esp_random();
   bootloader_random_disable();
+  randomSeed(random_seed);
 
   pinMode(BOOT_PIN, INPUT_PULLUP);
   pinMode(EXTERNAL_BUTTON_PIN, INPUT_PULLUP);
+
+  // Initialize ADC oneshot for hardware random generation
+  adc_oneshot_unit_init_cfg_t init_config = {
+      .unit_id = ADC_UNIT_1,
+      .ulp_mode = ADC_ULP_MODE_DISABLE,
+  };
+  ESP_ERROR_CHECK(adc_oneshot_new_unit(&init_config, &adc_handle));
+  
+  adc_oneshot_chan_cfg_t config = {
+      .atten = ADC_ATTEN_DB_0,
+      .bitwidth = ADC_BITWIDTH_12,
+  };
+  ESP_ERROR_CHECK(adc_oneshot_config_channel(adc_handle, RANDOM_SOURCE_PIN, &config));
 
   // Initialize pins as LEDC channels with high resolution
   // 12-bit resolution provides 4096 levels for ultra-smooth transitions
@@ -1313,6 +1334,11 @@ void loop()
   // Just keep the built-in LED heartbeat
   digitalWrite(LED_BUILTIN, HIGH);
   delay(500);
+
+  int random_seed_diff = 0;
+  adc_oneshot_read(adc_handle, RANDOM_SOURCE_PIN, &random_seed_diff);
+  random_seed += random_seed_diff;
+  randomSeed(random_seed);
   digitalWrite(LED_BUILTIN, LOW);
   delay(500);
 }
